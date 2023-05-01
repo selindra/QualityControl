@@ -290,8 +290,11 @@ void TrendingTaskITSCluster::storePlots(repository::DatabaseInterface& qcdb)
         c[ilay * NTRENDSCLUSTER + id]->cd();
         c[ilay * NTRENDSCLUSTER + id]->SetTickx();
         c[ilay * NTRENDSCLUSTER + id]->SetTicky();
-        if (id != 2)
+        if (id != 0)
           c[ilay * NTRENDSCLUSTER + id]->SetLogy();
+        else if (id = 0)
+          c[ilay * NTRENDSCLUSTER + id]->SetLogy(false);
+        //  c[ilay * NTRENDSCLUSTER + id]->SetAxisRange(0, 10, "Y");
 
         int npoints = (int)runlist.size();
         TH1F* hfake = new TH1F("hfake", "hfake", npoints, 0.5, (double)npoints + 0.5);
