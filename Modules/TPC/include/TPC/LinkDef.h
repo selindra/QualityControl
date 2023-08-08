@@ -27,6 +27,7 @@
 #pragma link C++ class o2::quality_control_modules::tpc::QualityReductorTPC + ;
 #pragma link C++ class o2::quality_control_modules::tpc::DCSPTemperature + ;
 #pragma link C++ class o2::quality_control_modules::tpc::IDCs + ;
+#pragma link C++ class o2::quality_control_modules::tpc::IDCsVsSACs + ;
 #pragma link C++ class o2::quality_control_modules::tpc::QualityObserver + ;
 #pragma link C++ class o2::quality_control_modules::tpc::RatioGeneratorTPC + ;
 #pragma link C++ class o2::quality_control_modules::tpc::CheckOfSlices + ;
@@ -35,6 +36,8 @@
 #pragma link C++ class o2::quality_control_modules::tpc::CheckOfPads + ;
 #pragma link C++ class o2::quality_control_modules::tpc::CalPadClusterReductor + ;
 #pragma link C++ class o2::quality_control_modules::tpc::IDCScaleReductor + ;
+#pragma link C++ class o2::quality_control_modules::tpc::SACs + ;
+#pragma link C++ class o2::quality_control_modules::tpc::TPCAggregator + ;
 
 #pragma link C++ function o2::quality_control_modules::tpc::addAndPublish + ;
 #pragma link C++ function o2::quality_control_modules::tpc::toVector + ;

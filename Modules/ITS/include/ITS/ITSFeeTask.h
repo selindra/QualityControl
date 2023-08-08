@@ -32,6 +32,8 @@
 #include <TLine.h>
 #include <TText.h>
 #include <TLatex.h>
+#include <TLine.h>
+#include <TLegend.h>
 
 class TH2I;
 class TH1I;
@@ -71,11 +73,11 @@ class ITSFeeTask final : public TaskInterface
   ~ITSFeeTask() override;
 
   void initialize(o2::framework::InitContext& ctx) override;
-  void startOfActivity(Activity& activity) override;
+  void startOfActivity(const Activity& activity) override;
   void startOfCycle() override;
   void monitorData(o2::framework::ProcessingContext& ctx) override;
   void endOfCycle() override;
-  void endOfActivity(Activity& activity) override;
+  void endOfActivity(const Activity& activity) override;
   void reset() override;
 
  private:
@@ -100,6 +102,7 @@ class ITSFeeTask final : public TaskInterface
   const float StartAngle[7] = { 16.997 / 360 * (TMath::Pi() * 2.), 17.504 / 360 * (TMath::Pi() * 2.), 17.337 / 360 * (TMath::Pi() * 2.), 8.75 / 360 * (TMath::Pi() * 2.), 7 / 360 * (TMath::Pi() * 2.), 5.27 / 360 * (TMath::Pi() * 2.), 4.61 / 360 * (TMath::Pi() * 2.) }; // start angle of first stave in each layer
   const float MidPointRad[7] = { 23.49, 31.586, 39.341, 197.598, 246.944, 345.348, 394.883 };
   const int laneMax[NLayer] = { 108, 144, 180, 384, 480, 1176, 1344 };
+  const int NLanesIB = 432, NLanesML = 864, NLanesOL = 2520, NLanesTotal = 3816;
   const int lanesPerFeeId[NLayer] = { 3, 3, 3, 8, 8, 14, 14 };
   const int feePerLayer[NLayer] = { 36, 48, 60, 48, 60, 84, 96 };
   const int StavePerLayer[NLayer] = { 12, 16, 20, 24, 30, 42, 48 };
@@ -128,14 +131,15 @@ class ITSFeeTask final : public TaskInterface
   TH2I* mIndexCheck; // should be zero
   TH2I* mIdCheck;    // should be 0x : e4
   TH2I* mRDHSummary;
-  TH2I* mLaneStatus[NFlags]; // 4 flags for each lane. 3/8/14 lane for each link. 3/2/2 link for each RU. TODO: remove the OK flag in these 4 flag plots, OK flag plot just used to debug.
+  TH2I* mRDHSummaryCumulative; // RDH plot which does NOT reset at every QC cycle
+  TH2I* mLaneStatus[NFlags];   // 4 flags for each lane. 3/8/14 lane for each link. 3/2/2 link for each RU. TODO: remove the OK flag in these 4 flag plots, OK flag plot just used to debug.
   TH2I* mLaneStatusCumulative[NFlags];
   TH2Poly* mLaneStatusOverview[NFlags] = { 0x0 };
   TH1I* mLaneStatusSummary[NLayer];
-  TH1I* mLaneStatusSummaryIB;
-  TH1I* mLaneStatusSummaryML;
-  TH1I* mLaneStatusSummaryOL;
-  TH1I* mLaneStatusSummaryGlobal;
+  TH1D* mLaneStatusSummaryIB;
+  TH1D* mLaneStatusSummaryML;
+  TH1D* mLaneStatusSummaryOL;
+  TH1D* mLaneStatusSummaryGlobal;
   TH1I* mProcessingTime;
   TH2F* mPayloadSize; // average payload size vs linkID
   // TH1D* mInfoCanvas;//TODO: default, not implemented yet

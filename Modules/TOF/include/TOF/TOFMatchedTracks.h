@@ -53,11 +53,11 @@ class TOFMatchedTracks final : public TaskInterface
 
   // Definition of the methods for the template method pattern
   void initialize(o2::framework::InitContext& ctx) override;
-  void startOfActivity(Activity& activity) override;
+  void startOfActivity(const Activity& activity) override;
   void startOfCycle() override;
   void monitorData(o2::framework::ProcessingContext& ctx) override;
   void endOfCycle() override;
-  void endOfActivity(Activity& activity) override;
+  void endOfActivity(const Activity& activity) override;
   void reset() override;
 
   // track selection
@@ -125,8 +125,6 @@ class TOFMatchedTracks final : public TaskInterface
   int32_t mNTPCClustersCut = 40;
   float mDCACut = 100.f;
   float mDCACutY = 10.f;
-  std::string mGRPFileName = "o2sim_grp.root";
-  std::string mGeomFileName = "o2sim_geometry-aligned.root";
   float mBz = 0; ///< nominal Bz
 
   int mTF = -1; // to count the number of processed TFs

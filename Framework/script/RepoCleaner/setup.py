@@ -5,7 +5,7 @@ with open('README.md', 'r') as fh:
 
 setup(
     name='qcrepocleaner',
-    version='1.1',
+    version='1.5',
     author='Barthelemy von Haller',
     author_email='bvonhall@cern.ch',
     url='https://gitlab.cern.ch/AliceO2Group/QualityControl/Framework/script/RepoCleaner',
@@ -27,7 +27,9 @@ setup(
     scripts=[
         'qcrepocleaner/o2-qc-repo-cleaner',
         'qcrepocleaner/o2-qc-repo-delete-objects-in-runs',
+        'qcrepocleaner/o2-qc-repo-delete-not-in-runs',
         'qcrepocleaner/o2-qc-repo-delete-time-interval',
+        'qcrepocleaner/o2-qc-repo-find-objects-not-updated',
         'qcrepocleaner/o2-qc-repo-move-objects'],
     include_package_data=True,
     package_data={

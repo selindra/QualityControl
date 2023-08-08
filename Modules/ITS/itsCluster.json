@@ -43,9 +43,17 @@
           "dicttimestamp": "0",
           "geomPath": "./",
           "publishSummary1D": "0",
-          "publishDetailedSummary": "0",
-          "isLocalGeometry": "0",
-          "geomstamp": "1640991600000"
+          "publishDetailedSummary": "1"
+        },
+	"grpGeomRequest" : {
+          "geomRequest": "Aligned",
+          "askGRPECS": "false",
+          "askGRPLHCIF": "false",
+          "askGRPMagField": "false",
+          "askMatLUT": "false",
+          "askTime": "false",
+          "askOnceAllButField": "true",
+          "needPropagatorD":  "false"
         }
       }
     },
@@ -64,8 +72,12 @@
           "maxcluoccL4": "1",
           "maxcluoccL5": "1",
           "maxcluoccL6": "1",
+          "MaxEmptyLaneFraction": "0.1",
           "skipxbinsoccupancy": "",
-          "skipybinsoccupancy": ""
+          "skipybinsoccupancy": "",
+          "plotWithTextMessage": "",
+          "textMessage": "" 
+
         },
         "dataSource": [
           {
@@ -79,6 +91,7 @@
               "Layer4/AverageClusterSize",
               "Layer5/AverageClusterSize",
               "Layer6/AverageClusterSize",
+              "EmptyLaneFractionGlobal",
               "General/General_Occupancy"
             ]
           }

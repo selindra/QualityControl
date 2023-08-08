@@ -21,6 +21,7 @@
 // O2
 #include <Common/Exceptions.h>
 #include <Framework/DataSpecUtils.h>
+#include <Framework/ConfigParamRegistry.h>
 #include <Monitoring/MonitoringFactory.h>
 #include <Monitoring/Monitoring.h>
 #include <CommonUtils/ConfigurableParam.h>
@@ -34,6 +35,7 @@
 #include "QualityControl/CheckRunnerFactory.h"
 #include "QualityControl/RootClassFactory.h"
 #include "QualityControl/ConfigParamGlo.h"
+#include "QualityControl/Bookkeeping.h"
 
 #include <TSystem.h>
 
@@ -41,7 +43,6 @@ using namespace std::chrono;
 using namespace AliceO2::Common;
 using namespace AliceO2::InfoLogger;
 using namespace o2::framework;
-using namespace o2::configuration;
 using namespace o2::monitoring;
 using namespace o2::quality_control::core;
 using namespace o2::quality_control::repository;
@@ -212,6 +213,7 @@ void CheckRunner::init(framework::InitContext& iCtx)
   try {
     initInfologger(iCtx);
     refreshConfig(iCtx);
+    Bookkeeping::getInstance().init(mConfig.bookkeepingUrl);
     initDatabase();
     initMonitoring();
     initServiceDiscovery();
@@ -309,6 +311,7 @@ void CheckRunner::prepareCacheData(framework::InputRecord& inputRecord)
           ILOG(Debug, Devel) << "    Creating an ad hoc MO." << ENDM;
           header::DataOrigin origin = DataSpecUtils::asConcreteOrigin(input);
           mo = std::make_shared<MonitorObject>(tObject, input.binding, "CheckRunner", origin.str);
+          mo->setActivity(*mActivity);
         }
 
         if (mo) {
@@ -376,10 +379,17 @@ void CheckRunner::store(QualityObjectsType& qualityObjects, long validFrom)
   ILOG(Debug, Devel) << "Storing " << qualityObjects.size() << " QualityObjects" << ENDM;
   try {
     for (auto& qo : qualityObjects) {
-      qo->setActivity(mActivity);
-      mDatabase->storeQO(qo, validFrom);
+      auto tmpValidity = qo->getValidity();
+      qo->setValidity(ValidityInterval{ static_cast<unsigned long>(validFrom), validFrom + 10ull * 365 * 24 * 60 * 60 * 1000 });
+      mDatabase->storeQO(qo);
+      qo->setValidity(tmpValidity);
       mTotalNumberQOStored++;
       mNumberQOStored++;
+    }
+
+    if (!qualityObjects.empty()) {
+      auto& qo = qualityObjects.at(0);
+      ILOG(Info, Devel) << "New validity of QO '" << qo->GetName() << "' would be (" << qo->getValidity().getMin() << ", " << qo->getValidity().getMax() << ")" << ENDM;
     }
   } catch (boost::exception& e) {
     ILOG(Info, Support) << "Unable to " << diagnostic_information(e) << ENDM;
@@ -391,10 +401,16 @@ void CheckRunner::store(std::vector<std::shared_ptr<MonitorObject>>& monitorObje
   ILOG(Debug, Devel) << "Storing " << monitorObjects.size() << " MonitorObjects" << ENDM;
   try {
     for (auto& mo : monitorObjects) {
-      mo->setActivity(mActivity);
-      mDatabase->storeMO(mo, validFrom);
+      auto tmpValidity = mo->getValidity();
+      mo->setValidity(ValidityInterval{ static_cast<unsigned long>(validFrom), validFrom + 10ull * 365 * 24 * 60 * 60 * 1000 });
+      mDatabase->storeMO(mo);
+      mo->setValidity(tmpValidity);
       mTotalNumberMOStored++;
       mNumberMOStored++;
+    }
+    if (!monitorObjects.empty()) {
+      auto& mo = monitorObjects.at(0);
+      ILOG(Info, Devel) << "New validity of MO '" << mo->GetName() << "' would be (" << mo->getValidity().getMin() << ", " << mo->getValidity().getMax() << ")" << ENDM;
     }
   } catch (boost::exception& e) {
     ILOG(Info, Support) << "Unable to " << diagnostic_information(e) << ENDM;
@@ -513,20 +529,26 @@ void CheckRunner::endOfStream(framework::EndOfStreamContext& eosContext)
 
 void CheckRunner::start(ServiceRegistryRef services)
 {
-  mActivity = computeActivity(services, mConfig.fallbackActivity);
-  string partitionName = computePartitionName(services);
-  QcInfoLogger::setRun(mActivity.mId);
-  QcInfoLogger::setPartition(partitionName);
-  ILOG(Info, Support) << "Starting run " << mActivity.mId << ":" << ENDM;
-  ILOG(Debug, Devel) << "   period: " << mActivity.mPeriodName << " / pass type: " << mActivity.mPassName << " / provenance: " << mActivity.mProvenance << ENDM;
+  mActivity = std::make_shared<Activity>(computeActivity(services, mConfig.fallbackActivity));
+  QcInfoLogger::setRun(mActivity->mId);
+  QcInfoLogger::setPartition(mActivity->mPartitionName);
+  ILOG(Info, Support) << "Starting run " << mActivity->mId << ":" << ENDM;
   mTimerTotalDurationActivity.reset();
-  mCollector->setRunNumber(mActivity.mId);
+  mCollector->setRunNumber(mActivity->mId);
   mReceivedEOS = false;
+  for (auto& [checkName, check] : mChecks) {
+    check.setActivity(mActivity);
+  }
+
+  // register ourselves to the BK
+  if (gSystem->Getenv("O2_QC_REGISTER_IN_BK")) { // until we are sure it works, we have to turn it on
+    Bookkeeping::getInstance().registerProcess(mActivity->mId, mDeviceName, mDetectorName, bookkeeping::DPL_PROCESS_TYPE_QC_CHECKER, "");
+  }
 }
 
 void CheckRunner::stop()
 {
-  ILOG(Info, Support) << "Stopping run " << mActivity.mId << ENDM;
+  ILOG(Info, Support) << "Stopping run " << mActivity->mId << ENDM;
   if (!mReceivedEOS) {
     ILOG(Warning, Devel) << "The STOP transition happened before an EndOfStream was received. The very last QC objects in this run might not have been stored." << ENDM;
   }
@@ -538,7 +560,7 @@ void CheckRunner::reset()
 
   try {
     mCollector.reset();
-    mActivity = Activity();
+    mActivity = make_shared<Activity>();
   } catch (...) {
     // we catch here because we don't know where it will go in DPL's CallbackService
     ILOG(Error, Support) << "Error caught in reset() : "

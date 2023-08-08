@@ -158,10 +158,6 @@ void QcMFTDigitTask::initialize(o2::framework::InitContext& /*ctx*/)
   getObjectsManager()->startPublishing(mDigitsROFSize.get());
   getObjectsManager()->setDisplayHint(mDigitsROFSize.get(), "logx logy");
 
-  mNOfDigitsTime = std::make_unique<TH1F>("mNOfDigitsTime", "Number of Digits per time bin; time (s); # entries", NofTimeBins, 0, maxDuration);
-  mNOfDigitsTime->SetMinimum(0.1);
-  getObjectsManager()->startPublishing(mNOfDigitsTime.get());
-
   mDigitsBC = std::make_unique<TH1F>("mDigitsBC", "Digits per BC; BCid; # entries", o2::constants::lhc::LHCMaxBunches, 0, o2::constants::lhc::LHCMaxBunches);
   mDigitsBC->SetMinimum(0.1);
   getObjectsManager()->startPublishing(mDigitsBC.get());
@@ -225,7 +221,7 @@ void QcMFTDigitTask::initialize(o2::framework::InitContext& /*ctx*/)
   }
 }
 
-void QcMFTDigitTask::startOfActivity(Activity& /*activity*/)
+void QcMFTDigitTask::startOfActivity(const Activity& /*activity*/)
 {
   ILOG(Debug, Devel) << "startOfActivity" << ENDM;
 
@@ -264,7 +260,6 @@ void QcMFTDigitTask::monitorData(o2::framework::ProcessingContext& ctx)
   for (const auto& rof : rofs) {
     mDigitsROFSize->Fill(rof.getNEntries());
     float seconds = orbitToSeconds(rof.getBCData().orbit, mRefOrbit) + rof.getBCData().bc * o2::constants::lhc::LHCBunchSpacingNS * 1e-9;
-    mNOfDigitsTime->Fill(seconds, rof.getNEntries());
     mDigitsBC->Fill(rof.getBCData().bc, rof.getNEntries());
   }
 
@@ -307,7 +302,7 @@ void QcMFTDigitTask::endOfCycle()
   ILOG(Debug, Devel) << "endOfCycle" << ENDM;
 }
 
-void QcMFTDigitTask::endOfActivity(Activity& /*activity*/)
+void QcMFTDigitTask::endOfActivity(const Activity& /*activity*/)
 {
   ILOG(Debug, Devel) << "endOfActivity" << ENDM;
 }
@@ -324,7 +319,6 @@ void QcMFTDigitTask::reset()
     mDigitChipStdDev->Reset();
   mDigitOccupancySummary->Reset();
   mDigitsROFSize->Reset();
-  mNOfDigitsTime->Reset();
   mDigitsBC->Reset();
 
   // maps

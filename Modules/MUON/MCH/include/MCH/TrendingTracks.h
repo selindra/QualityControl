@@ -22,16 +22,12 @@
 #include "QualityControl/PostProcessingInterface.h"
 #include "QualityControl/Reductor.h"
 
-#include "MCH/TrendingConfigMCH.h"
-
-#include "MCHRawCommon/DataFormats.h"
-#include "MCHRawElecMap/Mapper.h"
+#include "MCH/PostProcessingConfigMCH.h"
 
 #include <memory>
 #include <unordered_map>
 #include <TTree.h>
 
-class TH1F;
 class TProfile;
 
 namespace o2::quality_control::repository
@@ -51,7 +47,7 @@ class TrendingTracks : public PostProcessingInterface
   TrendingTracks() = default;
   ~TrendingTracks() override = default;
 
-  void configure(std::string name, const boost::property_tree::ptree& config) override;
+  void configure(const boost::property_tree::ptree& config) override;
   void initialize(Trigger, framework::ServiceRegistryRef) override;
   void update(Trigger, framework::ServiceRegistryRef) override;
   void finalize(Trigger, framework::ServiceRegistryRef) override;
@@ -69,7 +65,7 @@ class TrendingTracks : public PostProcessingInterface
   void trendValues(const Trigger& t, repository::DatabaseInterface&);
   void generatePlots();
 
-  TrendingConfigMCH mConfig;
+  PostProcessingConfigMCH mConfig;
   MetaData mMetaData;
   UInt_t mTime;
   float mClusCH[10]; /// average number of clusters in each chamber
@@ -80,7 +76,7 @@ class TrendingTracks : public PostProcessingInterface
 
   TProfile* mHistClusPerChamberPrev = nullptr;
 
-  // These are initialized from the TrendingConfigMCH.h
+  // These are initialized from the PostProcessingConfigMCH.h
 };
 
 } // namespace o2::quality_control_modules::muonchambers

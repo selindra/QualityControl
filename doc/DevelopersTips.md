@@ -312,6 +312,18 @@ psql -h localhost ccdb ccdb_user -c "delete from ccdb_paths where pathid in (sel
 
 `curl -s 'http://ali-qcdb-gpn.cern.ch:8083/latest/qc/EMC.*' | grep -c ^Path:`
 
+### Update the certificate of the QCDB
+
+1. go to ca.cern.ch -> New Grid Host Certificate. Subject: alio2-cr1-hv-qcdb-gpn.cern.ch (alternative: alio2-cr1-hv-qcdb.cern.ch)
+2. download
+3. scp the p12 file to qcdb
+4. `openssl pkcs12 -in /tmp/new-certif.p12 -out hostcert.pem -clcerts -nokeys`
+5. `openssl pkcs12 -in /tmp/new-certif.p12 -out hostkey.pem -nocerts -nodes`
+6. `cd /var/lib/pgsql/.globus `
+7. backup the old files
+8. copy hostcert and hostkey
+9 chmod 600 them
+
 ### ControlWorkflows
 
 #### Parameter `qcConfiguration` in tasks
@@ -347,6 +359,8 @@ So the file repo is in the default location, `/root/QC`, but the database is als
 The config files on EPNs are merged to build a humongous config file used for the whole workflow. 
 The common part is stored here: https://github.com/AliceO2Group/O2DPG/blob/master/DATA/production/qc-sync/qc-global-epn.json
 The config file to use for each detector are defined [here](https://github.com/AliceO2Group/O2DPG/blob/master/DATA/production/qc-workflow.sh)
+
+To use a different common part file, one can copy the `qc-global-epn.json` to some path on the EPNs (from the gateway, in your home as it is shared) and change in that json what we need for the tests. Then you can add to `pdp_extra_env_vars` the variable (they are space separated) : `QC_JSON_GLOBAL=/path/to/your/qc-global-epn.json` and that will be used
 
 ## run locally multi-node
 Terminal 1

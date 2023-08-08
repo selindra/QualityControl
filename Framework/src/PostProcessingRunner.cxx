@@ -25,11 +25,13 @@
 #include "QualityControl/runnerUtils.h"
 #include "QualityControl/ConfigParamGlo.h"
 #include "QualityControl/MonitorObjectCollection.h"
+#include "QualityControl/Bookkeeping.h"
 
 #include <utility>
 #include <Framework/DataAllocator.h>
 #include <Framework/DataTakingContext.h>
 #include <CommonUtils/ConfigurableParam.h>
+#include <TSystem.h>
 
 using namespace o2::quality_control::core;
 using namespace o2::quality_control::repository;
@@ -39,8 +41,8 @@ namespace o2::quality_control::postprocessing
 
 constexpr long objectValidity = 1000l * 60 * 60 * 24 * 365 * 10;
 
-PostProcessingRunner::PostProcessingRunner(std::string name) //
-  : mName(std::move(name))
+PostProcessingRunner::PostProcessingRunner(std::string id) //
+  : mID(std::move(id))
 {
 }
 
@@ -54,14 +56,14 @@ void PostProcessingRunner::init(const boost::property_tree::ptree& config)
   auto specs = InfrastructureSpecReader::readInfrastructureSpec(config);
   auto ppTaskSpec = std::find_if(specs.postProcessingTasks.begin(),
                                  specs.postProcessingTasks.end(),
-                                 [name = mName](const auto& spec) {
-                                   return spec.taskName == name;
+                                 [id = mID](const auto& spec) {
+                                   return spec.id == id;
                                  });
   if (ppTaskSpec == specs.postProcessingTasks.end()) {
-    throw std::runtime_error("Could not find the configuration of the post-processing task '" + mName + "'");
+    throw std::runtime_error("Could not find the configuration of the post-processing task '" + mID + "'");
   }
 
-  init(PostProcessingRunner::extractConfig(specs.common, *ppTaskSpec), PostProcessingConfig{ mName, config });
+  init(PostProcessingRunner::extractConfig(specs.common, *ppTaskSpec), PostProcessingConfig{ mID, config });
 }
 
 void PostProcessingRunner::init(const PostProcessingRunnerConfig& runnerConfig, const PostProcessingConfig& taskConfig)
@@ -69,7 +71,7 @@ void PostProcessingRunner::init(const PostProcessingRunnerConfig& runnerConfig, 
   mRunnerConfig = runnerConfig;
   mTaskConfig = taskConfig;
 
-  QcInfoLogger::init("post/" + mName, mRunnerConfig.infologgerDiscardParameters);
+  QcInfoLogger::init("post/" + mID, mRunnerConfig.infologgerDiscardParameters);
   ILOG(Info, Support) << "Initializing PostProcessingRunner" << ENDM;
 
   root_class_factory::loadLibrary(mTaskConfig.moduleName);
@@ -89,6 +91,7 @@ void PostProcessingRunner::init(const PostProcessingRunnerConfig& runnerConfig, 
   if (mPublicationCallback == nullptr) {
     mPublicationCallback = publishToRepository(*mDatabase);
   }
+  Bookkeeping::getInstance().init(runnerConfig.bookkeepingUrl);
 
   // setup user's task
   ILOG(Debug, Devel) << "Creating a user task '" << mTaskConfig.taskName << "'" << ENDM;
@@ -99,16 +102,17 @@ void PostProcessingRunner::init(const PostProcessingRunnerConfig& runnerConfig, 
     ILOG(Debug, Devel) << "The user task '" << mTaskConfig.taskName << "' has been successfully created" << ENDM;
 
     mTaskState = TaskState::Created;
+    mTask->setID(mTaskConfig.id);
     mTask->setName(mTaskConfig.taskName);
-    mTask->configure(mTaskConfig.taskName, mRunnerConfig.configTree);
+    mTask->configure(mRunnerConfig.configTree);
   } else {
-    throw std::runtime_error("Failed to create the task '" + mTaskConfig.taskName + "'");
+    throw std::runtime_error("Failed to create the task '" + mTaskConfig.taskName + "' (det " + mTaskConfig.detectorName + ")");
   }
 }
 
 bool PostProcessingRunner::run()
 {
-  ILOG(Debug, Devel) << "Checking triggers of the task '" << mTask->getName() << "'" << ENDM;
+  ILOG(Debug, Devel) << "Checking triggers of the task '" << mTask->getName() << "' (det " << mTaskConfig.detectorName << ")" << ENDM;
 
   if (mTaskState == TaskState::Created) {
     if (Trigger trigger = trigger_helpers::tryTrigger(mInitTriggers)) {
@@ -149,7 +153,7 @@ void PostProcessingRunner::runOverTimestamps(const std::vector<uint64_t>& timest
       " given. One is for the initialization, zero or more for update, one for finalization");
   }
 
-  ILOG(Info, Support) << "Running the task '" << mTask->getName() << "' over " << timestamps.size() << " timestamps." << ENDM;
+  ILOG(Info, Support) << "Running the task '" << mTask->getName() << "' (det " << mRunnerConfig.detectorName << ") over " << timestamps.size() << " timestamps." << ENDM;
 
   doInitialize({ TriggerType::UserOrControl, false, mTaskConfig.activity, timestamps.front() });
   for (size_t i = 1; i < timestamps.size() - 1; i++) {
@@ -161,15 +165,15 @@ void PostProcessingRunner::runOverTimestamps(const std::vector<uint64_t>& timest
 void PostProcessingRunner::start(framework::ServiceRegistryRef dplServices)
 {
   if (dplServices.active<framework::RawDeviceService>()) {
-    mTaskConfig.activity.mId = computeRunNumber(dplServices, mTaskConfig.activity.mId);
-    mTaskConfig.activity.mType = computeRunType(dplServices, mTaskConfig.activity.mType);
-    mTaskConfig.activity.mPeriodName = computePeriodName(dplServices, mTaskConfig.activity.mPeriodName);
-    mTaskConfig.activity.mPassName = computePassName(mTaskConfig.activity.mPassName);
-    mTaskConfig.activity.mProvenance = computeProvenance(mTaskConfig.activity.mProvenance);
-    auto partitionName = computePartitionName(dplServices);
-    QcInfoLogger::setPartition(partitionName);
+    mTaskConfig.activity = computeActivity(dplServices, mTaskConfig.activity);
+    QcInfoLogger::setPartition(mTaskConfig.activity.mPartitionName);
   }
   QcInfoLogger::setRun(mTaskConfig.activity.mId);
+
+  // register ourselves to the BK
+  if (gSystem->Getenv("O2_QC_REGISTER_IN_BK")) { // until we are sure it works, we have to turn it on
+    Bookkeeping::getInstance().registerProcess(mTaskConfig.activity.mId, mRunnerConfig.taskName, mRunnerConfig.detectorName, bookkeeping::DPL_PROCESS_TYPE_QC_POSTPROCESSING, "");
+  }
 
   if (mTaskState == TaskState::Created || mTaskState == TaskState::Finished) {
     mInitTriggers = trigger_helpers::createTriggers(mTaskConfig.initTriggers, mTaskConfig);
@@ -230,27 +234,37 @@ void PostProcessingRunner::doUpdate(const Trigger& trigger)
 {
   ILOG(Info, Support) << "Updating the user task due to trigger '" << trigger << "'" << ENDM;
   mTask->update(trigger, mServices);
-  mPublicationCallback(mObjectManager->getNonOwningArray(), trigger.timestamp, trigger.timestamp + objectValidity);
+  mObjectManager->setValidity(ValidityInterval{ trigger.timestamp, trigger.timestamp + objectValidity });
+  mPublicationCallback(mObjectManager->getNonOwningArray());
 }
 
 void PostProcessingRunner::doFinalize(const Trigger& trigger)
 {
+  if (mTaskState != TaskState::Running) {
+    ILOG(Warning, Support) << "Attempt at finalizing the user task although it was not initialized. Skipping the finalization." << ENDM;
+    return;
+  }
   ILOG(Info, Support) << "Finalizing the user task due to trigger '" << trigger << "'" << ENDM;
   mTask->finalize(trigger, mServices);
-  mPublicationCallback(mObjectManager->getNonOwningArray(), trigger.timestamp, trigger.timestamp + objectValidity);
+  mObjectManager->setValidity(ValidityInterval{ trigger.timestamp, trigger.timestamp + objectValidity });
+  mPublicationCallback(mObjectManager->getNonOwningArray());
   mTaskState = TaskState::Finished;
 }
-const std::string& PostProcessingRunner::getName()
+
+const std::string& PostProcessingRunner::getID() const
 {
-  return mName;
+  return mID;
 }
 
 PostProcessingRunnerConfig PostProcessingRunner::extractConfig(const CommonSpec& commonSpec, const PostProcessingTaskSpec& ppTaskSpec)
 {
   return {
+    ppTaskSpec.id,
     ppTaskSpec.taskName,
+    ppTaskSpec.detectorName,
     commonSpec.database,
     commonSpec.consulUrl,
+    commonSpec.bookkeepingUrl,
     commonSpec.infologgerDiscardParameters,
     commonSpec.postprocessingPeriod,
     "",
@@ -260,7 +274,7 @@ PostProcessingRunnerConfig PostProcessingRunner::extractConfig(const CommonSpec&
 
 MOCPublicationCallback publishToDPL(framework::DataAllocator& allocator, std::string outputBinding)
 {
-  return [&allocator = allocator, outputBinding = std::move(outputBinding)](const MonitorObjectCollection* moc, uint64_t, uint64_t) {
+  return [&allocator = allocator, outputBinding = std::move(outputBinding)](const MonitorObjectCollection* moc) {
     // TODO pass timestamps to objects, so they are later stored correctly.
     ILOG(Debug, Support) << "Publishing " << moc->GetEntries() << " MonitorObjects" << ENDM;
     allocator.snapshot(framework::OutputRef{ outputBinding }, *moc);
@@ -269,12 +283,12 @@ MOCPublicationCallback publishToDPL(framework::DataAllocator& allocator, std::st
 
 MOCPublicationCallback publishToRepository(o2::quality_control::repository::DatabaseInterface& repository)
 {
-  return [&](const MonitorObjectCollection* collection, uint64_t from, uint64_t to) {
+  return [&](const MonitorObjectCollection* collection) {
     ILOG(Debug, Support) << "Publishing " << collection->GetEntries() << " MonitorObjects" << ENDM;
     for (const TObject* mo : *collection) {
       // We have to copy the object so we can pass a shared_ptr.
       // This is not ideal, but MySQL interface requires shared ptrs to queue the objects.
-      repository.storeMO(std::shared_ptr<MonitorObject>(dynamic_cast<MonitorObject*>(mo->Clone())), from, to);
+      repository.storeMO(std::shared_ptr<MonitorObject>(dynamic_cast<MonitorObject*>(mo->Clone())));
     }
   };
 }

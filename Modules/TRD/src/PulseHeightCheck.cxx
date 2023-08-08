@@ -99,12 +99,12 @@ Quality PulseHeightCheck::check(std::map<std::string, std::shared_ptr<MonitorObj
   for (auto& [moName, mo] : *moMap) {
 
     (void)moName;
-    if (mo->getName() == "PulseHeight/mPulseHeight") {
+    if ((mo->getName() == "PulseHeight/mPulseHeight") || (mo->getName() == "PulseHeight/mPulseHeightpro")) {
       auto* h = dynamic_cast<TH1F*>(mo->getObject());
 
       result = Quality::Good;
 
-      //check max bin is in the spike on left.
+      // check max bin is in the spike on left.
       auto max = h->GetMaximum();
       auto maxbin = h->GetMaximumBin();
       auto average = 0.0;
@@ -123,7 +123,7 @@ Quality PulseHeightCheck::check(std::map<std::string, std::shared_ptr<MonitorObj
         return result;
       }
 
-      // check the drift region is suffuciently below the lefth hand peak.
+      // check the drift region is sufficiently below the left hand peak.
       if (average > 0) {
         if (max / average > mPulseHeightRatio) {
           // peak is sufficiently high relative to the drift region.
@@ -137,7 +137,7 @@ Quality PulseHeightCheck::check(std::map<std::string, std::shared_ptr<MonitorObj
           return result;
         }
         if (max < average) {
-          //if the peak maximum is below the average height of the drift region, we have a problem.
+          // if the peak maximum is below the average height of the drift region, we have a problem.
           result = Quality::Bad;
           result.addReason(FlagReasonFactory::Invalid(),
                            "Peak is below the drift region average  peak : " + std::to_string(max) + " average of drift:" + std::to_string(average));
@@ -158,11 +158,11 @@ std::string PulseHeightCheck::getAcceptedType() { return "TH1"; }
 
 void PulseHeightCheck::beautify(std::shared_ptr<MonitorObject> mo, Quality checkResult)
 {
-  if (mo->getName() == "PulseHeight/mPulseHeight") {
+  if ((mo->getName() == "PulseHeight/mPulseHeight") || (mo->getName() == "PulseHeight/mPulseHeightpro")) {
     auto* h = dynamic_cast<TH1F*>(mo->getObject());
     TPaveText* msg = new TPaveText(0.3, 0.9, 0.7, 0.95, "NDC");
     h->GetListOfFunctions()->Add(msg);
-    //std::string message = fmt::format("Pulseheight message");
+    // std::string message = fmt::format("Pulseheight message");
     std::string message = "Pulseheight message";
     msg->SetName(message.c_str());
 
@@ -178,7 +178,7 @@ void PulseHeightCheck::beautify(std::shared_ptr<MonitorObject> mo, Quality check
       h->SetFillColor(kOrange);
       h->SetLineColor(kOrange);
     }
-    //h->SetLineColor(kBlack);
+    // h->SetLineColor(kBlack);
     h->Draw();
   }
 }

@@ -21,6 +21,7 @@
 #include "QualityControl/Reductor.h"
 #include "QualityControl/RootClassFactory.h"
 #include "QualityControl/RepoPathUtils.h"
+#include "QualityControl/ActivityHelpers.h"
 
 #include <TH1.h>
 #include <TH2F.h>
@@ -29,13 +30,51 @@
 #include <TGraphErrors.h>
 #include <TPoint.h>
 
+#include <set>
+
 using namespace o2::quality_control;
 using namespace o2::quality_control::core;
 using namespace o2::quality_control::postprocessing;
 
-void TrendingTask::configure(std::string name, const boost::property_tree::ptree& config)
+void TrendingTask::configure(const boost::property_tree::ptree& config)
 {
-  mConfig = TrendingTaskConfig(name, config);
+  mConfig = TrendingTaskConfig(getID(), config);
+}
+
+bool TrendingTask::canContinueTrend(TTree* tree)
+{
+  if (tree == nullptr) {
+    return false;
+  }
+
+  size_t expectedNBranches = 1 /* meta */ + 1 /* time */ + mConfig.dataSources.size();
+  if (tree->GetNbranches() != expectedNBranches) {
+    ILOG(Warning, Support) << "The retrieved TTree has different number of branches than expected ("
+                           << tree->GetNbranches() << " vs. " << expectedNBranches << "). "
+                           << "Filling the tree with mismatching branches might produce invalid plots, "
+                           << "thus a new tree will be created" << ENDM;
+    return false;
+  }
+
+  std::set<std::string> expectedBranchNames{ "time", "meta" };
+  for (const auto& dataSource : mConfig.dataSources) {
+    expectedBranchNames.insert(dataSource.name);
+  }
+
+  std::set<std::string> existingBranchNames;
+  for (const auto& branch : *tree->GetListOfBranches()) {
+    existingBranchNames.insert(branch->GetName());
+  }
+
+  if (expectedBranchNames != existingBranchNames) {
+    ILOG(Warning, Support) << "The retrieved TTree has the same number of branches,"
+                           << " but at least one has a different name."
+                           << " Filling the tree with mismatching branches might produce invalid plots, "
+                           << "thus a new tree will be created" << ENDM;
+    return false;
+  }
+
+  return true;
 }
 
 void TrendingTask::initialize(Trigger, framework::ServiceRegistryRef services)
@@ -53,14 +92,16 @@ void TrendingTask::initialize(Trigger, framework::ServiceRegistryRef services)
         mo->setIsOwner(false);
       }
     } else {
-      ILOG(Warning, Support) << "Could not retrieve an existing TTree for this task, maybe there is none which match these Activity settings" << ENDM;
+      ILOG(Warning, Support)
+        << "Could not retrieve an existing TTree for this task, maybe there is none which match these Activity settings"
+        << ENDM;
     }
   }
   for (const auto& source : mConfig.dataSources) {
     mReductors.emplace(source.name, root_class_factory::create<Reductor>(source.moduleName, source.reductorName));
   }
 
-  if (mTrend == nullptr) {
+  if (mTrend == nullptr || !canContinueTrend(mTrend.get())) {
     mTrend = std::make_unique<TTree>();
     mTrend->SetName(PostProcessingInterface::getName().c_str());
 
@@ -81,7 +122,7 @@ void TrendingTask::initialize(Trigger, framework::ServiceRegistryRef services)
   }
 }
 
-//todo: see if OptimizeBaskets() indeed helps after some time
+// todo: see if OptimizeBaskets() indeed helps after some time
 void TrendingTask::update(Trigger t, framework::ServiceRegistryRef services)
 {
   auto& qcdb = services.get<repository::DatabaseInterface>();
@@ -102,7 +143,9 @@ void TrendingTask::finalize(Trigger, framework::ServiceRegistryRef)
 
 void TrendingTask::trendValues(const Trigger& t, repository::DatabaseInterface& qcdb)
 {
-  mTime = t.timestamp / 1000; // ROOT expects seconds since epoch.
+  mTime = activity_helpers::isLegacyValidity(t.activity.mValidity)
+            ? t.timestamp / 1000
+            : t.activity.mValidity.getMax() / 1000; // ROOT expects seconds since epoch.
   mMetaData.runNumber = t.activity.mId;
 
   for (auto& dataSource : mConfig.dataSources) {
@@ -130,6 +173,10 @@ void TrendingTask::trendValues(const Trigger& t, repository::DatabaseInterface& 
 void TrendingTask::setUserAxisLabel(TAxis* xAxis, TAxis* yAxis, const std::string& graphAxisLabel)
 {
   // todo if we keep adding this method to pp classes we should move it up somewhere
+  if (std::count(graphAxisLabel.begin(), graphAxisLabel.end(), ':') != 1 && graphAxisLabel != "") {
+    ILOG(Error, Support) << "In setup of graphAxisLabel yLabel:xLabel should be divided by one ':'" << ENDM;
+    return;
+  }
   const std::size_t posDivider = graphAxisLabel.find(':');
   const std::string yLabel(graphAxisLabel.substr(0, posDivider));
   const std::string xLabel(graphAxisLabel.substr(posDivider + 1));
@@ -138,8 +185,28 @@ void TrendingTask::setUserAxisLabel(TAxis* xAxis, TAxis* yAxis, const std::strin
   yAxis->SetTitle(yLabel.data());
 }
 
+void TrendingTask::setUserYAxisRange(TH1* hist, const std::string& graphYAxisRange)
+{
+  if (std::count(graphYAxisRange.begin(), graphYAxisRange.end(), ':') != 1 && graphYAxisRange != "") {
+    ILOG(Error, Support) << "In setup of graphYRange yMin:yMax should be divided by one ':'" << ENDM;
+    return;
+  }
+  const std::size_t posDivider = graphYAxisRange.find(':');
+  const std::string minString(graphYAxisRange.substr(0, posDivider));
+  const std::string maxString(graphYAxisRange.substr(posDivider + 1));
+
+  const float yMin = std::stof(minString);
+  const float yMax = std::stof(maxString);
+  hist->GetYaxis()->SetLimits(yMin, yMax);
+}
+
 void TrendingTask::generatePlots()
 {
+  if (mTrend == nullptr) {
+    ILOG(Info, Support) << "The trend object is not there, won't generate any plots." << ENDM;
+    return;
+  }
+
   if (mTrend->GetEntries() < 1) {
     ILOG(Info, Support) << "No entries in the trend so far, won't generate any plots." << ENDM;
     return;
@@ -217,6 +284,14 @@ void TrendingTask::generatePlots()
       } else if (plot.varexp.find(":meta.runNumber") != std::string::npos) {
         histo->GetXaxis()->SetNoExponent(true);
       }
+
+      // Set the user-defined range on the y axis if needed.
+      if (!plot.graphYRange.empty()) {
+        setUserYAxisRange(histo, plot.graphYRange);
+        c->Modified();
+        c->Update();
+      }
+
       // QCG doesn't empty the buffers before visualizing the plot, nor does ROOT when saving the file,
       // so we have to do it here.
       histo->BufferEmpty();

@@ -33,7 +33,7 @@
 #include <Framework/DataSpecUtils.h>
 #include <Framework/ExternalFairMQDeviceProxy.h>
 #include <Framework/DataDescriptorQueryBuilder.h>
-#include <Framework/O2ControlLabels.h>
+#include <Framework/O2ControlParameters.h>
 #include <Mergers/MergerInfrastructureBuilder.h>
 #include <Mergers/MergerBuilder.h>
 #include <DataSampling/DataSampling.h>
@@ -55,7 +55,8 @@ using SubSpec = o2::header::DataHeader::SubSpecificationType;
 namespace o2::quality_control::core
 {
 
-uint16_t defaultPolicyPort = 42349;
+constexpr uint16_t defaultPolicyPort = 42349;
+constexpr auto proxyMemoryKillThresholdMB = "5000";
 
 struct DataSamplingPolicySpec {
   DataSamplingPolicySpec(std::string name, std::string control, std::string remoteMachine = "")
@@ -214,9 +215,15 @@ o2::framework::WorkflowSpec InfrastructureGenerator::generateRemoteInfrastructur
 
       // In "delta" mode Mergers should implement moving window, in "entire" - QC Tasks.
       size_t resetAfterCycles = taskSpec.mergingMode == "delta" ? taskSpec.resetAfterCycles : 0;
-      auto cycleDurationSeconds = taskSpec.cycleDurationSeconds * taskSpec.mergerCycleMultiplier;
-
-      generateMergers(workflow, taskSpec.taskName, numberOfLocalMachines, cycleDurationSeconds, taskSpec.mergingMode,
+      std::vector<std::pair<size_t, size_t>> cycleDurationsMultiplied;
+      if (taskSpec.cycleDurationSeconds > 0) { // old, simple, style
+        cycleDurationsMultiplied = { { taskSpec.cycleDurationSeconds, 1 } };
+      } else { // new style
+        cycleDurationsMultiplied = taskSpec.multipleCycleDurations;
+      }
+      std::for_each(cycleDurationsMultiplied.begin(), cycleDurationsMultiplied.end(),
+                    [taskSpec](std::pair<size_t, size_t>& p) { p.first *= taskSpec.mergerCycleMultiplier; });
+      generateMergers(workflow, taskSpec.taskName, numberOfLocalMachines, cycleDurationsMultiplied, taskSpec.mergingMode,
                       resetAfterCycles, infrastructureSpec.common.monitoringUrl, taskSpec.detectorName, taskSpec.mergersPerLayer);
 
     } else if (taskSpec.location == TaskLocationSpec::Remote) {
@@ -355,7 +362,7 @@ void InfrastructureGenerator::customizeInfrastructure(std::vector<framework::Com
 
 void InfrastructureGenerator::printVersion()
 {
-  ILOG(Info, Devel) << "QC version " << o2::quality_control::core::Version::GetQcVersion().getString() << ENDM;
+  ILOG(Debug, Devel) << "QC version " << o2::quality_control::core::Version::GetQcVersion().getString() << ENDM;
 }
 
 void InfrastructureGenerator::generateDataSamplingPolicyLocalProxyBind(framework::WorkflowSpec& workflow,
@@ -368,7 +375,7 @@ void InfrastructureGenerator::generateDataSamplingPolicyLocalProxyBind(framework
   std::string proxyName = policyName + "-proxy";
   std::string channelName = policyName + "-" + localMachine;
   std::string channelConfig = "name=" + channelName + ",type=pub,method=bind,address=tcp://*:" + localPort +
-                              ",rateLogging=60,transport=zeromq,sndBufSize=4";
+                              ",rateLogging=60,transport=zeromq,sndBufSize=4,autoBind=false";
   auto channelSelector = [channelName](InputSpec const&, const std::unordered_map<std::string, std::vector<fair::mq::Channel>>&) {
     return channelName;
   };
@@ -380,6 +387,9 @@ void InfrastructureGenerator::generateDataSamplingPolicyLocalProxyBind(framework
       channelConfig.c_str(),
       channelSelector));
   workflow.back().labels.emplace_back(control == "odc" ? ecs::preserveRawChannelsLabel : ecs::uniqueProxyLabel);
+  if (getenv("O2_QC_KILL_PROXIES") != nullptr) {
+    workflow.back().metadata.push_back(DataProcessorMetadata{ ecs::privateMemoryKillThresholdMB, proxyMemoryKillThresholdMB });
+  }
 }
 
 void InfrastructureGenerator::generateDataSamplingPolicyRemoteProxyConnect(framework::WorkflowSpec& workflow,
@@ -404,6 +414,9 @@ void InfrastructureGenerator::generateDataSamplingPolicyRemoteProxyConnect(frame
   // if not in RUNNING, we should drop all the incoming messages, we set the corresponding proxy option.
   enableDraining(proxy.options);
   workflow.emplace_back(std::move(proxy));
+  if (getenv("O2_QC_KILL_PROXIES") != nullptr) {
+    workflow.back().metadata.push_back(DataProcessorMetadata{ ecs::privateMemoryKillThresholdMB, proxyMemoryKillThresholdMB });
+  }
 }
 
 void InfrastructureGenerator::generateDataSamplingPolicyLocalProxyConnect(framework::WorkflowSpec& workflow,
@@ -428,6 +441,9 @@ void InfrastructureGenerator::generateDataSamplingPolicyLocalProxyConnect(framew
       channelConfig.c_str(),
       channelSelector));
   workflow.back().labels.emplace_back(control == "odc" ? ecs::preserveRawChannelsLabel : ecs::uniqueProxyLabel);
+  if (getenv("O2_QC_KILL_PROXIES") != nullptr) {
+    workflow.back().metadata.push_back(DataProcessorMetadata{ ecs::privateMemoryKillThresholdMB, proxyMemoryKillThresholdMB });
+  }
 }
 
 void InfrastructureGenerator::generateDataSamplingPolicyRemoteProxyBind(framework::WorkflowSpec& workflow,
@@ -439,7 +455,7 @@ void InfrastructureGenerator::generateDataSamplingPolicyRemoteProxyBind(framewor
   const std::string& channelName = policyName;
   const std::string& proxyName = channelName; // channel name has to match proxy name
 
-  std::string channelConfig = "name=" + channelName + ",type=sub,method=bind,address=tcp://*:" + remotePort + ",rateLogging=60,transport=zeromq,rcvBufSize=1";
+  std::string channelConfig = "name=" + channelName + ",type=sub,method=bind,address=tcp://*:" + remotePort + ",rateLogging=60,transport=zeromq,rcvBufSize=1,autoBind=false";
 
   auto proxy = specifyExternalFairMQDeviceProxy(
     proxyName.c_str(),
@@ -449,6 +465,9 @@ void InfrastructureGenerator::generateDataSamplingPolicyRemoteProxyBind(framewor
   proxy.labels.emplace_back(control == "odc" ? ecs::preserveRawChannelsLabel : ecs::uniqueProxyLabel);
   // if not in RUNNING, we should drop all the incoming messages, we set the corresponding proxy option.
   enableDraining(proxy.options);
+  if (getenv("O2_QC_KILL_PROXIES") != nullptr) {
+    proxy.metadata.push_back(DataProcessorMetadata{ ecs::privateMemoryKillThresholdMB, proxyMemoryKillThresholdMB });
+  }
   workflow.emplace_back(std::move(proxy));
 }
 
@@ -469,6 +488,9 @@ void InfrastructureGenerator::generateLocalTaskLocalProxy(framework::WorkflowSpe
       { proxyInput },
       channelConfig.c_str()));
   workflow.back().labels.emplace_back(taskSpec.localControl == "odc" ? ecs::preserveRawChannelsLabel : ecs::uniqueProxyLabel);
+  if (getenv("O2_QC_KILL_PROXIES") != nullptr) {
+    workflow.back().metadata.push_back(DataProcessorMetadata{ ecs::privateMemoryKillThresholdMB, proxyMemoryKillThresholdMB });
+  }
 }
 
 void InfrastructureGenerator::generateLocalTaskRemoteProxy(framework::WorkflowSpec& workflow, const TaskSpec& taskSpec, size_t numberOfLocalMachines)
@@ -485,7 +507,7 @@ void InfrastructureGenerator::generateLocalTaskRemoteProxy(framework::WorkflowSp
   }
 
   std::string channelConfig = "name=" + channelName + ",type=sub,method=bind,address=tcp://*:" + remotePort +
-                              ",rateLogging=60,transport=zeromq,rcvBufSize=1";
+                              ",rateLogging=60,transport=zeromq,rcvBufSize=1,autoBind=false";
 
   auto proxy = specifyExternalFairMQDeviceProxy(
     proxyName.c_str(),
@@ -495,10 +517,13 @@ void InfrastructureGenerator::generateLocalTaskRemoteProxy(framework::WorkflowSp
   proxy.labels.emplace_back(taskSpec.localControl == "odc" ? ecs::preserveRawChannelsLabel : ecs::uniqueProxyLabel);
   // if not in RUNNING, we should drop all the incoming messages, we set the corresponding proxy option.
   enableDraining(proxy.options);
+  if (getenv("O2_QC_KILL_PROXIES") != nullptr) {
+    proxy.metadata.push_back(DataProcessorMetadata{ ecs::privateMemoryKillThresholdMB, proxyMemoryKillThresholdMB });
+  }
   workflow.emplace_back(std::move(proxy));
 }
 void InfrastructureGenerator::generateMergers(framework::WorkflowSpec& workflow, const std::string& taskName,
-                                              size_t numberOfLocalMachines, double cycleDurationSeconds,
+                                              size_t numberOfLocalMachines, std::vector<std::pair<size_t, size_t>> cycleDurations,
                                               const std::string& mergingMode, size_t resetAfterCycles, std::string monitoringUrl,
                                               const std::string& detectorName, std::vector<size_t> mergersPerLayer)
 {
@@ -520,7 +545,7 @@ void InfrastructureGenerator::generateMergers(framework::WorkflowSpec& workflow,
   MergerConfig mergerConfig;
   // if we are to change the mode to Full, disable reseting tasks after each cycle.
   mergerConfig.inputObjectTimespan = { (mergingMode.empty() || mergingMode == "delta") ? InputObjectsTimespan::LastDifference : InputObjectsTimespan::FullHistory };
-  mergerConfig.publicationDecision = { PublicationDecision::EachNSeconds, cycleDurationSeconds };
+  mergerConfig.publicationDecision = { PublicationDecision::EachNSeconds, cycleDurations };
   mergerConfig.mergedObjectTimespan = { MergedObjectTimespan::NCycles, (int)resetAfterCycles };
   // for now one merger should be enough, multiple layers to be supported later
   mergerConfig.topologySize = { TopologySize::MergersPerLayer, mergersPerLayer };
@@ -552,7 +577,10 @@ void InfrastructureGenerator::generateCheckRunners(framework::WorkflowSpec& work
 
   for (const auto& ppTaskSpec : infrastructureSpec.postProcessingTasks) {
     if (ppTaskSpec.active) {
-      InputSpec ppTaskOutput{ ppTaskSpec.taskName, PostProcessingDevice::createPostProcessingDataOrigin(), PostProcessingDevice::createPostProcessingDataDescription(ppTaskSpec.taskName), Lifetime::Sporadic };
+      InputSpec ppTaskOutput{ ppTaskSpec.taskName,
+                              PostProcessingDevice::createPostProcessingDataOrigin(ppTaskSpec.detectorName),
+                              PostProcessingDevice::createPostProcessingDataDescription(ppTaskSpec.taskName),
+                              Lifetime::Sporadic };
       tasksOutputMap.insert({ DataSpecUtils::label(ppTaskOutput), ppTaskOutput });
     }
   }

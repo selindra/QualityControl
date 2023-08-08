@@ -49,45 +49,24 @@ class PulseHeightTrackMatch final : public TaskInterface
 
   // Definition of the methods for the template method pattern
   void initialize(o2::framework::InitContext& ctx) override;
-  void startOfActivity(Activity& activity) override;
+  void startOfActivity(const Activity& activity) override;
   void startOfCycle() override;
   void monitorData(o2::framework::ProcessingContext& ctx) override;
   void endOfCycle() override;
-  void endOfActivity(Activity& activity) override;
+  void endOfActivity(const Activity& activity) override;
   void reset() override;
   void buildHistograms();
-  void drawLinesMCM(TH2F* histo);
-  void drawTrdLayersGrid(TH2F* hist);
   void retrieveCCDBSettings();
-  void drawLinesOnPulseHeight(TH1F* h);
-  void fillLinesOnHistsPerLayer(int iLayer);
-  void drawHashOnLayers(int layer, int hcid, int col, int rowstart, int rowend);
-  void buildChamberIgnoreBP();
-  bool isChamberToBeIgnored(unsigned int sm, unsigned int stack, unsigned int layer);
+  void drawLinesOnPulseHeight(TProfile* h);
 
  private:
-  // limits
-  bool mSkipSharedDigits;
-  unsigned int mPulseHeightThreshold;
+  // json configurable parameters
   std::pair<float, float> mDriftRegion;
   std::pair<float, float> mPulseHeightPeakRegion;
+  std::bitset<4> mTrackType = 0xf; // bitset to select one or a combination of track types 0: ITSTPCTRD, 1: TPCTRD, 2: TRACKLET, 3: OTHERS. Default is 0xf: all tracks
   long int mTimestamp;
-  std::shared_ptr<TH1F> mParsingTimePerTF;
-  std::shared_ptr<TH1F> mDigitsPerEvent;
-  std::shared_ptr<TH1F> mTrackletsPerEvent;
-  std::shared_ptr<TH1F> mTracksPerEvent;
-  std::shared_ptr<TH1F> mTrackletsPerMatchedTrack;
-  std::shared_ptr<TH1F> mTriggerPerTF;
-  std::shared_ptr<TH1F> mTriggerWDigitPerTF;
   std::shared_ptr<TProfile> mPulseHeightpro = nullptr;
   std::shared_ptr<TProfile2D> mPulseHeightperchamber = nullptr;
-  std::vector<TH2F*> mLayers;
-
-  // information pulled from ccdb
-  o2::trd::NoiseStatusMCM* mNoiseMap = nullptr;
-  o2::trd::HalfChamberStatusQC* mChamberStatus = nullptr;
-  std::string mChambersToIgnore;
-  std::bitset<o2::trd::constants::MAXCHAMBER> mChambersToIgnoreBP;
 };
 
 } // namespace o2::quality_control_modules::trd

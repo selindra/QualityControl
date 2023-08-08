@@ -121,7 +121,7 @@ void ITSTrackSimTask::initialize(o2::framework::InitContext& /*ctx*/)
   mGeom = o2::its::GeometryTGeo::Instance();
 }
 
-void ITSTrackSimTask::startOfActivity(Activity& activity)
+void ITSTrackSimTask::startOfActivity(const Activity& activity)
 {
   mRunNumber = activity.mId;
   ILOG(Debug, Devel) << "startOfActivity" << ENDM;
@@ -134,7 +134,7 @@ void ITSTrackSimTask::startOfCycle()
 
 void ITSTrackSimTask::monitorData(o2::framework::ProcessingContext& ctx)
 {
-  ILOG(Info, Support) << "START DOING QC General" << ENDM;
+  ILOG(Debug, Devel) << "START DOING QC General" << ENDM;
   o2::steer::MCKinematicsReader reader(mCollisionsContextPath.c_str());
   info.resize(reader.getNEvents(0));
   for (int i = 0; i < reader.getNEvents(0); ++i) {
@@ -182,11 +182,9 @@ void ITSTrackSimTask::monitorData(o2::framework::ProcessingContext& ctx)
   for (int i = 0; i < reader.getNEvents(0); ++i) {
     std::vector<MCTrack> const& mcArr = reader.getTracks(i);
     auto mcHeader = reader.getMCEventHeader(0, i); // SourceID=0 for ITS
-
     for (int mc = 0; mc < mcArr.size(); mc++) {
 
       const auto& mcTrack = (mcArr)[mc];
-
       info[i][mc].isFilled = false;
       if (mcTrack.Vx() * mcTrack.Vx() + mcTrack.Vy() * mcTrack.Vy() > 1)
         continue;
@@ -311,7 +309,7 @@ void ITSTrackSimTask::endOfCycle()
   ILOG(Debug, Devel) << "endOfCycle" << ENDM;
 }
 
-void ITSTrackSimTask::endOfActivity(Activity& /*activity*/)
+void ITSTrackSimTask::endOfActivity(const Activity& /*activity*/)
 {
   ILOG(Debug, Devel) << "endOfActivity" << ENDM;
 }
@@ -442,7 +440,7 @@ void ITSTrackSimTask::createAllHistos()
 void ITSTrackSimTask::addObject(TObject* aObject)
 {
   if (!aObject) {
-    ILOG(Info, Support) << " ERROR: trying to add non-existent object " << ENDM;
+    ILOG(Debug, Devel) << " ERROR: trying to add non-existent object " << ENDM;
     return;
   } else {
     mPublishedObjects.push_back(aObject);
@@ -461,7 +459,7 @@ void ITSTrackSimTask::publishHistos()
 {
   for (unsigned int iObj = 0; iObj < mPublishedObjects.size(); iObj++) {
     getObjectsManager()->startPublishing(mPublishedObjects.at(iObj));
-    ILOG(Info, Support) << " Object will be published: " << mPublishedObjects.at(iObj)->GetName() << ENDM;
+    ILOG(Debug, Devel) << " Object will be published: " << mPublishedObjects.at(iObj)->GetName() << ENDM;
   }
 }
 

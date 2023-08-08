@@ -26,9 +26,12 @@ namespace o2::quality_control::postprocessing
 {
 
 struct PostProcessingRunnerConfig {
+  std::string id;
   std::string taskName;
+  std::string detectorName;
   std::unordered_map<std::string, std::string> database;
   std::string consulUrl{};
+  std::string bookkeepingUrl{};
   core::DiscardFileParameters infologgerDiscardParameters;
   double periodSeconds = 10.0;
   std::string configKeyValues; // These are for ConfigurableParams, not for override-values!

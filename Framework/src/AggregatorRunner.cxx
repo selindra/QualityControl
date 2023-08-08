@@ -39,6 +39,7 @@
 #include "QualityControl/AggregatorRunnerFactory.h"
 #include "QualityControl/RootClassFactory.h"
 #include "QualityControl/ConfigParamGlo.h"
+#include "QualityControl/Bookkeeping.h"
 
 using namespace AliceO2::Common;
 using namespace AliceO2::InfoLogger;
@@ -132,6 +133,9 @@ header::DataDescription AggregatorRunner::createAggregatorRunnerDataDescription(
   if (aggregatorName.empty()) {
     BOOST_THROW_EXCEPTION(FatalException() << errinfo_details("Empty taskName for task's data description"));
   }
+  if (aggregatorName.length() > header::DataDescription::size) {
+    ILOG(Warning, Devel) << "Aggregator name \"" << aggregatorName << "\" is longer than " << (int)header::DataDescription::size << ", it might cause name clashes in the DPL workflow" << ENDM;
+  }
   o2::header::DataDescription description;
   description.runtimeInit(std::string(aggregatorName.substr(0, header::DataDescription::size)).c_str());
   return description;
@@ -145,9 +149,9 @@ std::string AggregatorRunner::createAggregatorRunnerName()
 void AggregatorRunner::init(framework::InitContext& iCtx)
 {
   initInfoLogger(iCtx);
-
   refreshConfig(iCtx);
   QcInfoLogger::setDetector(AggregatorRunner::getDetectorName(mAggregators));
+  Bookkeeping::getInstance().init(mRunnerConfig.bookkeepingUrl);
 
   try {
     initLibraries(); // we have to load libraries before we load ConfigurableParams, otherwise the corresponding ROOT dictionaries won't be found
@@ -209,7 +213,7 @@ QualityObjectsType AggregatorRunner::aggregate()
 
     if (updatePolicyManager.isReady(aggregatorName)) {
       ILOG(Info, Devel) << "   Quality Objects for the aggregator '" << aggregatorName << "' are  ready, aggregating" << ENDM;
-      auto newQOs = aggregator->aggregate(mQualityObjects); // we give the whole list
+      auto newQOs = aggregator->aggregate(mQualityObjects, mActivity); // we give the whole list
       mTotalNumberObjectsProduced += newQOs.size();
       mTotalNumberAggregatorExecuted++;
       // we consider the output of the aggregators the same way we do the output of a check
@@ -234,8 +238,11 @@ void AggregatorRunner::store(QualityObjectsType& qualityObjects)
   ILOG(Info, Devel) << "Storing " << qualityObjects.size() << " QualityObjects" << ENDM;
   try {
     for (auto& qo : qualityObjects) {
-      qo->setActivity(mActivity);
       mDatabase->storeQO(qo);
+    }
+    if (!qualityObjects.empty()) {
+      auto& qo = qualityObjects.at(0);
+      ILOG(Info, Devel) << "Validity of QO '" << qo->GetName() << "' is (" << qo->getValidity().getMin() << ", " << qo->getValidity().getMax() << ")" << ENDM;
     }
   } catch (boost::exception& e) {
     ILOG(Info, Devel) << "Unable to " << diagnostic_information(e) << ENDM;
@@ -407,10 +414,14 @@ void AggregatorRunner::start(ServiceRegistryRef services)
 {
   mActivity = computeActivity(services, mRunnerConfig.fallbackActivity);
   mTimerTotalDurationActivity.reset();
-  string partitionName = computePartitionName(services);
   QcInfoLogger::setRun(mActivity.mId);
-  QcInfoLogger::setPartition(partitionName);
-  ILOG(Info, Support) << "Starting run " << mActivity.mId << "> period: " << mActivity.mPeriodName << " / pass type: " << mActivity.mPassName << " / provenance: " << mActivity.mProvenance << ENDM;
+  QcInfoLogger::setPartition(mActivity.mPartitionName);
+  ILOG(Info, Support) << "Starting run " << mActivity.mId << ENDM;
+
+  // register ourselves to the BK
+  if (gSystem->Getenv("O2_QC_REGISTER_IN_BK")) { // until we are sure it works, we have to turn it on
+    Bookkeeping::getInstance().registerProcess(mActivity.mId, mDeviceName, AggregatorRunner::getDetectorName(mAggregators), bookkeeping::DPL_PROCESS_TYPE_QC_AGGREGATOR, "");
+  }
 }
 
 void AggregatorRunner::stop()

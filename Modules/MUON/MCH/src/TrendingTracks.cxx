@@ -18,20 +18,15 @@
 
 #include "MCH/TrendingTracks.h"
 #include "MUONCommon/MergeableTH2Ratio.h"
-#include "MCHMappingInterface/Segmentation.h"
-#include "MCHMappingSegContour/CathodeSegmentationContours.h"
 #include "QualityControl/QcInfoLogger.h"
 #include "QualityControl/DatabaseInterface.h"
 #include "QualityControl/MonitorObject.h"
 #include "QualityControl/Reductor.h"
 #include "QualityControl/RootClassFactory.h"
-#include <boost/property_tree/ptree.hpp>
+#include "QualityControl/ActivityHelpers.h"
 #include <TH1.h>
-#include <TMath.h>
-#include <TH2.h>
 #include <TCanvas.h>
 #include <TPaveText.h>
-#include <TDatime.h>
 #include <TGraphErrors.h>
 #include <TProfile.h>
 #include <TPoint.h>
@@ -42,9 +37,9 @@ using namespace o2::quality_control::postprocessing;
 using namespace o2::quality_control_modules::muon;
 using namespace o2::quality_control_modules::muonchambers;
 
-void TrendingTracks::configure(std::string name, const boost::property_tree::ptree& config)
+void TrendingTracks::configure(const boost::property_tree::ptree& config)
 {
-  mConfig = TrendingConfigMCH(name, config);
+  mConfig = PostProcessingConfigMCH(getID(), config);
   for (int chamber = 0; chamber < 10; chamber++) {
     mConfig.plots.push_back({ fmt::format("Clusters_CH{}", chamber + 1),
                               fmt::format("Clusters CH{}", chamber + 1),
@@ -103,7 +98,6 @@ void TrendingTracks::computeClustersPerChamber(TProfile* p)
 // todo: see if OptimizeBaskets() indeed helps after some time
 void TrendingTracks::update(Trigger t, framework::ServiceRegistryRef services)
 {
-  std::cout << "TrendingTracks::update()" << std::endl;
   auto& qcdb = services.get<repository::DatabaseInterface>();
 
   trendValues(t, qcdb);
@@ -117,8 +111,9 @@ void TrendingTracks::finalize(Trigger t, framework::ServiceRegistryRef)
 
 void TrendingTracks::trendValues(const Trigger& t, repository::DatabaseInterface& qcdb)
 {
-  mTime = t.timestamp / 1000; // ROOT expects seconds since epoch
-  mMetaData.runNumber = t.activity.mId;
+  mTime = activity_helpers::isLegacyValidity(t.activity.mValidity)
+            ? t.timestamp / 1000
+            : t.activity.mValidity.getMax() / 1000; // ROOT expects seconds since epoch.  mMetaData.runNumber = t.activity.mId;
 
   std::shared_ptr<o2::quality_control::core::MonitorObject> moClusPerChamber = nullptr;
 

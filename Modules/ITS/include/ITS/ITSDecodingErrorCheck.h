@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 #include <sstream>
+#include "ITSMFTReconstruction/DecodingStat.h"
 
 namespace o2::quality_control_modules::its
 {
@@ -40,8 +41,38 @@ class ITSDecodingErrorCheck : public o2::quality_control::checker::CheckInterfac
   // Override interface
   Quality check(std::map<std::string, std::shared_ptr<MonitorObject>>* moMap) override;
   void beautify(std::shared_ptr<MonitorObject> mo, Quality checkResult = Quality::Null) override;
+  std::vector<int> vListErrorIdBad, vListErrorIdMedium;
+  bool doFlatCheck = false;
+  o2::itsmft::GBTLinkDecodingStat statistics;
+
+  template <typename T>
+  std::vector<T> convertToArray(std::string input)
+  {
+
+    std::istringstream ss{ input };
+
+    std::vector<T> result;
+    std::string token;
+
+    while (std::getline(ss, token, ',')) {
+
+      if constexpr (std::is_same_v<T, int>) {
+        result.push_back(std::stoi(token));
+      } else if constexpr (std::is_same_v<T, float>) {
+        result.push_back(std::stof(token));
+      } else if constexpr (std::is_same_v<T, std::string>) {
+        result.push_back(token);
+      }
+    }
+    return result;
+  }
 
  private:
+  int nCycle = 0;
+  // set timer
+  std::chrono::time_point<std::chrono::high_resolution_clock> start;
+  std::chrono::time_point<std::chrono::high_resolution_clock> end;
+  int TIME = 1;
   ClassDefOverride(ITSDecodingErrorCheck, 1);
 
   std::shared_ptr<TLatex> tInfo;

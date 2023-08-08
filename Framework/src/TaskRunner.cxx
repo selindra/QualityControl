@@ -30,6 +30,10 @@
 #include <Framework/InputSpan.h>
 #include <Framework/DataRefUtils.h>
 #include <Framework/EndOfStreamContext.h>
+#include <Framework/TimingInfo.h>
+#include <Framework/DataTakingContext.h>
+#include <Framework/DefaultsHelpers.h>
+#include <Framework/ConfigParamRegistry.h>
 #include <CommonUtils/ConfigurableParam.h>
 #include <DetectorsBase/GRPGeomHelper.h>
 
@@ -40,6 +44,9 @@
 #include "QualityControl/TaskRunnerFactory.h"
 #include "QualityControl/ConfigParamGlo.h"
 #include "QualityControl/ObjectsManager.h"
+#include "QualityControl/Bookkeeping.h"
+#include "QualityControl/TimekeeperFactory.h"
+#include "QualityControl/ActivityHelpers.h"
 
 #include <string>
 #include <TFile.h>
@@ -62,8 +69,7 @@ using namespace std::chrono;
 using namespace AliceO2::Common;
 
 TaskRunner::TaskRunner(const TaskRunnerConfig& config)
-  : mTaskConfig(config),
-    mRunNumber(0)
+  : mTaskConfig(config)
 {
 }
 
@@ -106,8 +112,7 @@ void TaskRunner::refreshConfig(InitContext& iCtx)
     ILOG(Warning, Devel) << "Could not get updated config tree in TaskRunner::init() - `qcConfiguration` could not be retrieved" << ENDM;
   } catch (...) {
     // we catch here because we don't know where it will get lost in dpl, and also we don't care if this part has failed.
-    ILOG(Warning, Devel) << "Error caught in refreshConfig() : "
-                         << current_diagnostic(true) << ENDM;
+    ILOG(Warning, Devel) << "Error caught in refreshConfig() : " << current_diagnostic(true) << ENDM;
   }
 }
 
@@ -139,6 +144,7 @@ void TaskRunner::init(InitContext& iCtx)
 
   refreshConfig(iCtx);
   printTaskConfig();
+  Bookkeeping::getInstance().init(mTaskConfig.bookkeepingUrl);
 
   // registering state machine callbacks
   try {
@@ -158,6 +164,11 @@ void TaskRunner::init(InitContext& iCtx)
   // setup publisher
   mObjectsManager = std::make_shared<ObjectsManager>(mTaskConfig.taskName, mTaskConfig.className, mTaskConfig.detectorName, mTaskConfig.consulUrl, mTaskConfig.parallelTaskID);
 
+  // setup timekeeping
+  mDeploymentMode = DefaultsHelpers::deploymentMode();
+  mTimekeeper = TimekeeperFactory::create(mDeploymentMode);
+  mTimekeeper->setCCDBOrbitsPerTFAccessor([]() { return o2::base::GRPGeomHelper::getNHBFPerTF(); });
+
   // setup user's task
   mTask.reset(TaskFactory::create(mTaskConfig, mObjectsManager));
   mTask->setMonitoring(mCollector);
@@ -173,7 +184,6 @@ void TaskRunner::init(InitContext& iCtx)
   }
 
   // init user's task
-  mTask->setCcdbUrl(mTaskConfig.conditionUrl);
   mTask->initialize(iCtx);
 
   mNoMoreCycles = false;
@@ -199,14 +209,17 @@ void TaskRunner::run(ProcessingContext& pCtx)
   auto [dataReady, timerReady] = validateInputs(pCtx.inputs());
 
   if (dataReady) {
+    mTimekeeper->updateByTimeFrameID(pCtx.services().get<TimingInfo>().tfCounter);
     mTask->monitorData(pCtx);
     updateMonitoringStats(pCtx);
   }
 
   if (timerReady) {
+    mTimekeeper->updateByCurrentTimestamp(pCtx.services().get<TimingInfo>().timeslice / 1000);
     finishCycle(pCtx.outputs());
     if (mTaskConfig.resetAfterCycles > 0 && (mCycleNumber % mTaskConfig.resetAfterCycles == 0)) {
       mTask->reset();
+      mTimekeeper->reset();
     }
     if (mTaskConfig.maxNumberCycles < 0 || mCycleNumber < mTaskConfig.maxNumberCycles) {
       startCycle();
@@ -320,6 +333,8 @@ void TaskRunner::endOfStream(framework::EndOfStreamContext& eosContext)
   if (!mCycleOn && mCycleNumber == 0) {
     ILOG(Error, Support) << "An EndOfStream was received before TaskRunner could start the first cycle, probably the device was not started. Something is wrong, doing nothing." << ENDM;
   } else {
+    ILOG(Info, Trace) << "Updating timekeeper with a current timestamp upon receiving an EoS message" << ENDM;
+    mTimekeeper->updateByCurrentTimestamp(getCurrentTimestamp());
     ILOG(Info, Support) << "Received an EndOfStream, finishing the current cycle" << ENDM;
     finishCycle(eosContext.outputs());
   }
@@ -328,10 +343,9 @@ void TaskRunner::endOfStream(framework::EndOfStreamContext& eosContext)
 
 void TaskRunner::start(ServiceRegistryRef services)
 {
-  mRunNumber = o2::quality_control::core::computeRunNumber(services, mTaskConfig.fallbackActivity.mId);
-  QcInfoLogger::setRun(mRunNumber);
-  string partitionName = computePartitionName(services);
-  QcInfoLogger::setPartition(partitionName);
+  mActivity = o2::quality_control::core::computeActivity(services, mTaskConfig.fallbackActivity);
+  QcInfoLogger::setRun(mActivity.mId);
+  QcInfoLogger::setPartition(mActivity.mPartitionName);
 
   mNoMoreCycles = false;
   mCycleNumber = 0;
@@ -357,7 +371,6 @@ void TaskRunner::stop()
     }
     endOfActivity();
     mTask->reset();
-    mRunNumber = 0;
   } catch (...) {
     // we catch here because we don't know where it will go in DPL's CallbackService
     ILOG(Error, Support) << "Error caught in stop() : "
@@ -372,7 +385,8 @@ void TaskRunner::reset()
     mTask.reset();
     mCollector.reset();
     mObjectsManager.reset();
-    mRunNumber = 0;
+    mTimekeeper.reset();
+    mActivity = Activity();
   } catch (...) {
     // we catch here because we don't know where it will go in DPL's CallbackService
     ILOG(Error, Support) << "Error caught in reset() : "
@@ -406,12 +420,16 @@ std::tuple<bool /*data ready*/, bool /*timer ready*/> TaskRunner::validateInputs
 
 void TaskRunner::printTaskConfig() const
 {
-  ILOG(Info, Devel) << "Configuration loaded > Task name : " << mTaskConfig.taskName      //
-                    << " / Module name : " << mTaskConfig.moduleName                      //
-                    << " / Detector name : " << mTaskConfig.detectorName                  //
-                    << " / Cycle duration seconds : " << mTaskConfig.cycleDurationSeconds //
-                    << " / Max number cycles : " << mTaskConfig.maxNumberCycles           //
-                    << " / Save to file : " << mTaskConfig.saveToFile << ENDM;
+  ILOG(Info, Devel) << "Configuration loaded > Task name : " << mTaskConfig.taskName //
+                    << " / Module name : " << mTaskConfig.moduleName                 //
+                    << " / Detector name : " << mTaskConfig.detectorName             //
+                    << " / Max number cycles : " << mTaskConfig.maxNumberCycles      //
+                    << " / Save to file : " << mTaskConfig.saveToFile
+                    << " / Cycle duration seconds : ";
+  for (auto& [cycleDuration, period] : mTaskConfig.cycleDurations) {
+    ILOG(Info, Devel) << cycleDuration << "s during " << period << "s, ";
+  }
+  ILOG(Info, Devel) << ENDM;
 }
 
 void TaskRunner::startOfActivity()
@@ -420,22 +438,34 @@ void TaskRunner::startOfActivity()
   mTimerTotalDurationActivity.reset();
   mTotalNumberObjectsPublished = 0;
 
-  // Start activity in module's stask and update objectsManager
-  Activity activity = mTaskConfig.fallbackActivity;
-  activity.mId = mRunNumber;
-  ILOG(Info, Support) << "Starting run " << mRunNumber << ENDM;
-  mObjectsManager->setActivity(activity);
-  mCollector->setRunNumber(mRunNumber);
-  mTask->startOfActivity(activity);
+  // Start activity in module's task and update objectsManager
+  ILOG(Info, Support) << "Starting run " << mActivity.mId << ENDM;
+  mObjectsManager->setActivity(mActivity);
+
+  auto now = getCurrentTimestamp();
+  mTimekeeper->setStartOfActivity(mActivity.mValidity.getMin(), mTaskConfig.fallbackActivity.mValidity.getMin(), now, activity_helpers::getCcdbSorTimeAccessor(mActivity.mId));
+  mTimekeeper->updateByCurrentTimestamp(mTimekeeper->getActivityDuration().getMin());
+  mTimekeeper->setEndOfActivity(mActivity.mValidity.getMax(), mTaskConfig.fallbackActivity.mValidity.getMax(), now, activity_helpers::getCcdbEorTimeAccessor(mActivity.mId));
+
+  mCollector->setRunNumber(mActivity.mId);
+  mTask->startOfActivity(mActivity);
   mObjectsManager->updateServiceDiscovery();
+
+  // register ourselves to the BK
+  if (gSystem->Getenv("O2_QC_REGISTER_IN_BK")) { // until we are sure it works, we have to turn it on
+    Bookkeeping::getInstance().registerProcess(mActivity.mId, mTaskConfig.taskName, mTaskConfig.detectorName, bookkeeping::DPL_PROCESS_TYPE_QC_TASK, "");
+  }
 }
 
 void TaskRunner::endOfActivity()
 {
-  Activity activity = mTaskConfig.fallbackActivity;
-  activity.mId = mRunNumber;
-  ILOG(Info, Support) << "Stopping run " << mRunNumber << ENDM;
-  mTask->endOfActivity(activity);
+  ILOG(Info, Support) << "Stopping run " << mActivity.mId << ENDM;
+
+  auto now = getCurrentTimestamp();
+  mTimekeeper->updateByCurrentTimestamp(now);
+  mTimekeeper->setEndOfActivity(0, mTaskConfig.fallbackActivity.mValidity.getMax(), now, activity_helpers::getCcdbEorTimeAccessor(mActivity.mId)); // TODO: get end of run from ECS/BK if possible
+
+  mTask->endOfActivity(mObjectsManager->getActivity());
   mObjectsManager->removeAllFromServiceDiscovery();
 
   double rate = mTotalNumberObjectsPublished / mTimerTotalDurationActivity.getTime();
@@ -456,8 +486,17 @@ void TaskRunner::startCycle()
 void TaskRunner::finishCycle(DataAllocator& outputs)
 {
   ILOG(Debug, Support) << "Finish cycle " << mCycleNumber << ENDM;
+  // in the async context we print only info/ops logs, it's easier to temporarily elevate this log
+  ((mDeploymentMode == DeploymentMode::Grid) ? ILOG(Info, Ops) : ILOG(Info, Devel)) //
+    << "According to new validity rules, the objects validity is "
+    << "(" << mTimekeeper->getValidity().getMin() << ", " << mTimekeeper->getValidity().getMax() << "), "
+    << "(" << mTimekeeper->getSampleTimespan().getMin() << ", " << mTimekeeper->getSampleTimespan().getMax() << "), "
+    << "(" << mTimekeeper->getTimerangeIdRange().getMin() << ", " << mTimekeeper->getTimerangeIdRange().getMax() << ")" << ENDM;
   mTask->endOfCycle();
 
+  // this stays until we move to using mTimekeeper.
+  auto nowMs = getCurrentTimestamp();
+  mObjectsManager->setValidity(mTimekeeper->getValidity());
   mNumberObjectsPublishedInCycle += publish(outputs);
   mTotalNumberObjectsPublished += mNumberObjectsPublishedInCycle;
   saveToFile();

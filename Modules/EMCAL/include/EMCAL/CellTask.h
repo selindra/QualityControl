@@ -41,6 +41,7 @@ namespace emcal
 class Geometry;
 class BadChannelMap;
 class TimeCalibrationParams;
+class GainCalibrationFactors;
 class Cell;
 } // namespace emcal
 
@@ -63,6 +64,7 @@ class CellTask final : public TaskInterface
     bool mHasAmpVsCellID;
     bool mHasTimeVsCellID;
     bool mHasHistosCalib;
+    bool mCalibrateEnergy;
 
     double mAmpThresholdTimePhys = 0.15;
     double mAmpThresholdTimeCalib = 0.3;
@@ -87,6 +89,8 @@ class CellTask final : public TaskInterface
     TH2* mCellTimeSupermodule = nullptr;      ///< Uncalibrated cell time versus supermodule
     TH2* mCellTimeSupermoduleCalib = nullptr; ///< Calibrated cell time (good cells) versus supermodule
     TH2* mCellAmpSupermoduleBad = nullptr;    ///< Cell amplitude bad cells versus supermodule
+    TH2* mCellAmplitudeTime = nullptr;        ///< Cell amplitude vs. time (raw)
+    TH2* mCellAmplitudeTimeCalib = nullptr;   ///< Cell amplitude vs. time (calibrated)
 
     TH2* mCellOccupancy = nullptr;                      ///< Cell occupancy EMCAL and DCAL
     TH2* mCellOccupancyThr = nullptr;                   ///< Cell occupancy EMCAL and DCAL with Energy trheshold
@@ -94,6 +98,8 @@ class CellTask final : public TaskInterface
     TH2* mCellOccupancyGood = nullptr;                  ///< Cell occupancy EMCAL and DCAL good cells
     TH2* mCellOccupancyBad = nullptr;                   ///< Cell occupancy EMCAL and DCAL bad cells
     TH2* mIntegratedOccupancy = nullptr;                ///< Cell integrated occupancy
+    TH2* mAverageCellEnergy = nullptr;                  ///< Average cell energy
+    TH2* mAverageCellTime = nullptr;                    ///< Average cell time
     TH1* mCellAmplitude_tot = nullptr;                  ///< Cell amplitude in EMCAL,DCAL
     TH1* mCellAmplitudeEMCAL = nullptr;                 ///< Cell amplitude in EMCAL
     TH1* mCellAmplitudeDCAL = nullptr;                  ///< Cell amplitude in DCAL
@@ -116,7 +122,7 @@ class CellTask final : public TaskInterface
     void reset();
     void clean();
 
-    void fillHistograms(const o2::emcal::Cell& cell, bool isGood, double timeoffset, int bcphase);
+    void fillHistograms(const o2::emcal::Cell& cell, bool isGood, double timeoffset, double energycalib, int bcphase);
     void countEvent();
   };
 
@@ -127,11 +133,11 @@ class CellTask final : public TaskInterface
 
   // Definition of the methods for the template method pattern
   void initialize(o2::framework::InitContext& ctx) override;
-  void startOfActivity(Activity& activity) override;
+  void startOfActivity(const Activity& activity) override;
   void startOfCycle() override;
   void monitorData(o2::framework::ProcessingContext& ctx) override;
   void endOfCycle() override;
-  void endOfActivity(Activity& activity) override;
+  void endOfActivity(const Activity& activity) override;
   void reset() override;
 
   bool hasConfigValue(const std::string_view key);
@@ -170,6 +176,7 @@ class CellTask final : public TaskInterface
   o2::emcal::Geometry* mGeometry = nullptr;                  ///< EMCAL geometry
   o2::emcal::BadChannelMap* mBadChannelMap = nullptr;        ///< EMCAL channel map
   o2::emcal::TimeCalibrationParams* mTimeCalib = nullptr;    ///< EMCAL time calib
+  o2::emcal::GainCalibrationFactors* mEnergyCalib = nullptr; ///< EMCAL energy calibration
   int mTimeFramesPerCycles = 0;                              ///< TF per cycles
 
   TH1* mEvCounterTF = nullptr;      ///< Number of Events per timeframe

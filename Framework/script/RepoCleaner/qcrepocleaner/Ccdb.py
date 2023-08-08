@@ -2,7 +2,7 @@ import datetime
 import logging
 import sys
 import traceback
-from typing import List
+from typing import List, Dict
 
 import dryable
 import requests
@@ -55,22 +55,26 @@ class Ccdb:
     counter_deleted: int = 0
     counter_validity_updated: int = 0
     counter_preserved: int = 0
+    set_adjustable_eov: bool = False  # if True, set the metadata adjustableEOV before change validity
 
     def __init__(self, url):
         logger.info(f"Instantiate CCDB at {url}")
         self.url = url
 
-    def getObjectsList(self, added_since: int = 0, path: str = "") -> List[str]:
+    def getObjectsList(self, added_since: int = 0, path: str = "", no_wildcard: bool = False) -> List[str]:
         '''
         Get the full list of objects in the CCDB that have been created since added_since.
 
+        :param no_wildcard: if true, the path for which we get the list is not modified to add `/.*`.
+                            Set it to true if you need to get the versions of an object and not a folder.
+        :param path: the path
         :param added_since: if specified, only return objects added since this timestamp in epoch milliseconds.
         :return A list of strings, each containing a path to an object in the CCDB.
         '''
-        logger.debug(f"added_since : {added_since}")
-        url_for_all_obj = self.url + '/latest/' + path + '/.*'
+        url_for_all_obj = self.url + '/latest/' + path
+        url_for_all_obj += '/' if no_wildcard else '/.*'
         logger.debug(f"Ccdb::getObjectsList -> {url_for_all_obj}")
-        headers = {'Accept':'application/json', 'If-Not-Before':str(added_since)}
+        headers = {'Accept': 'application/json', 'If-Not-Before':str(added_since)}
         r = requests.get(url_for_all_obj, headers=headers)
         r.raise_for_status()
         try:
@@ -81,7 +85,26 @@ class Ccdb:
         paths = []
         for item in json['objects']:
             paths.append(item['path'])
+
         return paths
+
+    def getFullObjectsDetails(self, path: str = "") -> List[Dict]:
+        '''
+        Return the full json of all the objects found in the path.
+        :param path:
+        :return:
+        '''
+        url_for_all_obj = self.url + '/latest/' + path + '.*'
+        logger.debug(f"Ccdb::getFullObjectsDetails -> {url_for_all_obj}")
+        headers = {'Accept': 'application/json'}
+        r = requests.get(url_for_all_obj, headers=headers)
+        r.raise_for_status()
+        try:
+            json = r.json()
+        except json.decoder.JSONDecodeError as err:
+            logger.error(f"JSON decode error: {err}")
+            raise
+        return json['objects']
 
     def getVersionsList(self, object_path: str, from_ts: str = "", to_ts: str = "", run: int = -1) \
             -> List[ObjectVersion]:
@@ -166,14 +189,17 @@ class Ccdb:
             logger.debug(f"{metadata}")
             for key in metadata:
                 full_path += key + "=" + metadata[key] + "&"
+        if self.set_adjustable_eov:
+            logger.debug(f"As the parameter force is set, we add metadata adjustableEOV")
+            full_path += "adjustableEOV=1&"
         try:
             headers = {'Connection': 'close'}
             r = requests.put(full_path, headers=headers)
             r.raise_for_status()
             self.counter_validity_updated += 1
         except requests.exceptions.RequestException as e:  
-            print(e)
-            sys.exit(1)  # really ?
+            logging.error(f"Exception in updateValidity: {traceback.format_exc()}")
+
 
     def putVersion(self, version: ObjectVersion, data):
         '''

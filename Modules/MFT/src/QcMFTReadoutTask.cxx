@@ -118,7 +118,7 @@ void QcMFTReadoutTask::initialize(o2::framework::InitContext& /*ctx*/)
   // Defining summary histograms per zone
   mZoneSummaryChipWarning = std::make_unique<TH2F>(
     "mZoneSummaryChipWarning",
-    "Summary of chips in fault per zone;;",
+    "Summary of chips in warning per zone;;",
     10, -0.5, 9.5, 8, -0.5, 7.5);
   mZoneSummaryChipWarning->GetXaxis()->SetBinLabel(1, "d0-f0");
   mZoneSummaryChipWarning->GetXaxis()->SetBinLabel(2, "d0-f1");
@@ -198,7 +198,7 @@ void QcMFTReadoutTask::initialize(o2::framework::InitContext& /*ctx*/)
   getChipMapData();
 }
 
-void QcMFTReadoutTask::startOfActivity(Activity& /*activity*/)
+void QcMFTReadoutTask::startOfActivity(const Activity& /*activity*/)
 {
   ILOG(Debug, Devel) << "startOfActivity" << ENDM;
 
@@ -293,7 +293,7 @@ void QcMFTReadoutTask::endOfCycle()
   ILOG(Debug, Devel) << "endOfCycle" << ENDM;
 }
 
-void QcMFTReadoutTask::endOfActivity(Activity& /*activity*/)
+void QcMFTReadoutTask::endOfActivity(const Activity& /*activity*/)
 {
   ILOG(Debug, Devel) << "endOfActivity" << ENDM;
 }

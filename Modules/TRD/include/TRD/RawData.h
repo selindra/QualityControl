@@ -41,11 +41,11 @@ class RawData final : public TaskInterface
 
   // Definition of the methods for the template method pattern
   void initialize(o2::framework::InitContext& ctx) override;
-  void startOfActivity(Activity& activity) override;
+  void startOfActivity(const Activity& activity) override;
   void startOfCycle() override;
   void monitorData(o2::framework::ProcessingContext& ctx) override;
   void endOfCycle() override;
-  void endOfActivity(Activity& activity) override;
+  void endOfActivity(const Activity& activity) override;
   void reset() override;
 
   void buildHistograms();
@@ -55,6 +55,7 @@ class RawData final : public TaskInterface
   TH1F* mStats = nullptr;
   TH1F* mDataAcceptance = nullptr;
   TH2F* mDataVolumePerHalfChamber = nullptr;
+  TH2F* mDataVolumePerSector = nullptr;
   TH2F* mDataVolumePerHalfSectorCru = nullptr;
   TH1F* mTimeFrameTime = nullptr;
   TH1F* mTrackletParsingTime = nullptr;
@@ -64,7 +65,6 @@ class RawData final : public TaskInterface
   TH1F* mParsingErrors = nullptr;
   std::array<TH2F*, 10> mLinkErrors;
   std::array<TH2F*, o2::trd::ParsingErrors::TRDLastParsingError> mParsingErrors2d;
-
 };
 
 } // namespace o2::quality_control_modules::trd

@@ -47,11 +47,11 @@ class QcMFTDigitTask final : public TaskInterface
 
   // Definition of the methods for the template method pattern
   void initialize(o2::framework::InitContext& ctx) override;
-  void startOfActivity(Activity& activity) override;
+  void startOfActivity(const Activity& activity) override;
   void startOfCycle() override;
   void monitorData(o2::framework::ProcessingContext& ctx) override;
   void endOfCycle() override;
-  void endOfActivity(Activity& activity) override;
+  void endOfActivity(const Activity& activity) override;
   void reset() override;
 
   double orbitToSeconds(uint32_t orbit, uint32_t refOrbit)
@@ -96,7 +96,6 @@ class QcMFTDigitTask final : public TaskInterface
   std::unique_ptr<TH2F> mDigitDoubleColumnSensorIndices = nullptr;
 
   std::unique_ptr<TH1F> mDigitsROFSize = nullptr;
-  std::unique_ptr<TH1F> mNOfDigitsTime = nullptr;
   std::unique_ptr<TH1F> mDigitsBC = nullptr;
 
   std::vector<std::unique_ptr<TH2F>> mDigitChipOccupancyMap;

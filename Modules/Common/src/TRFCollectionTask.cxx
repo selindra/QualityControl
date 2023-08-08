@@ -22,10 +22,6 @@
 #include "QualityControl/QualitiesToTRFCollectionConverter.h"
 
 #include <DataFormatsQualityControl/TimeRangeFlagCollection.h>
-#include <DataFormatsQualityControl/TimeRangeFlag.h>
-#include <DataFormatsQualityControl/FlagReasons.h>
-
-#include <optional>
 
 using namespace o2::quality_control::postprocessing;
 using namespace o2::quality_control::core;
@@ -38,9 +34,9 @@ TRFCollectionTask::~TRFCollectionTask()
 {
 }
 
-void TRFCollectionTask::configure(std::string name, const boost::property_tree::ptree& config)
+void TRFCollectionTask::configure(const boost::property_tree::ptree& config)
 {
-  mConfig = TRFCollectionTaskConfig(name, config);
+  mConfig = TRFCollectionTaskConfig(getID(), config);
 }
 
 void TRFCollectionTask::initialize(Trigger t, framework::ServiceRegistryRef)

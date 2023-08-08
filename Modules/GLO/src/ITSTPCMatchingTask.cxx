@@ -59,27 +59,26 @@ void ITSTPCMatchingTask::initialize(o2::framework::InitContext& /*ctx*/)
     ILOG(Debug, Devel) << "Custom parameter - minDCACutY (for track selection): " << param->second << ENDM;
     mMatchITSTPCQC.setMinDCAtoBeamPipeYCut(atof(param->second.c_str()));
   }
-  if (auto param = mCustomParameters.find("grpFileName"); param != mCustomParameters.end()) {
-    ILOG(Debug, Devel) << "Custom parameter - GRP filename: " << param->second << ENDM;
-    mMatchITSTPCQC.setGRPFileName(param->second);
-  }
-  if (auto param = mCustomParameters.find("geomFileName"); param != mCustomParameters.end()) {
-    ILOG(Debug, Devel) << "Custom parameter - geometry filename: " << param->second << ENDM;
-    mMatchITSTPCQC.setGeomFileName(param->second);
-  }
 
   mMatchITSTPCQC.initDataRequest();
   mMatchITSTPCQC.init();
+
+  // Pt
   getObjectsManager()->startPublishing(mMatchITSTPCQC.getHistoPt());
   getObjectsManager()->startPublishing(mMatchITSTPCQC.getHistoPtTPC());
   getObjectsManager()->startPublishing(mMatchITSTPCQC.getFractionITSTPCmatch());
+  // Phi
   getObjectsManager()->startPublishing(mMatchITSTPCQC.getHistoPhi());
   getObjectsManager()->startPublishing(mMatchITSTPCQC.getHistoPhiTPC());
   getObjectsManager()->startPublishing(mMatchITSTPCQC.getFractionITSTPCmatchPhi());
+  getObjectsManager()->startPublishing(mMatchITSTPCQC.getFractionITSTPCmatchPhiVsPt());
+  // Eta
   getObjectsManager()->startPublishing(mMatchITSTPCQC.getHistoEta());
   getObjectsManager()->startPublishing(mMatchITSTPCQC.getHistoEtaTPC());
   getObjectsManager()->startPublishing(mMatchITSTPCQC.getFractionITSTPCmatchEta());
+  getObjectsManager()->startPublishing(mMatchITSTPCQC.getFractionITSTPCmatchEtaVsPt());
 
+  // Residuals
   getObjectsManager()->startPublishing(mMatchITSTPCQC.getHistoResidualPt());
   getObjectsManager()->startPublishing(mMatchITSTPCQC.getHistoResidualPhi());
   getObjectsManager()->startPublishing(mMatchITSTPCQC.getHistoResidualEta());
@@ -88,19 +87,22 @@ void ITSTPCMatchingTask::initialize(o2::framework::InitContext& /*ctx*/)
   getObjectsManager()->startPublishing(mMatchITSTPCQC.getHistoChi2Refit());
   getObjectsManager()->startPublishing(mMatchITSTPCQC.getHistoTimeResVsPt());
   if (mMatchITSTPCQC.getUseMC()) {
+    // Pt
     getObjectsManager()->startPublishing(mMatchITSTPCQC.getHistoPtPhysPrim());
     getObjectsManager()->startPublishing(mMatchITSTPCQC.getHistoPtTPCPhysPrim());
     getObjectsManager()->startPublishing(mMatchITSTPCQC.getFractionITSTPCmatchPhysPrim());
+    // Phi
     getObjectsManager()->startPublishing(mMatchITSTPCQC.getHistoPhiPhysPrim());
     getObjectsManager()->startPublishing(mMatchITSTPCQC.getHistoPhiTPCPhysPrim());
     getObjectsManager()->startPublishing(mMatchITSTPCQC.getFractionITSTPCmatchPhiPhysPrim());
+    // Eta
     getObjectsManager()->startPublishing(mMatchITSTPCQC.getHistoEtaPhysPrim());
     getObjectsManager()->startPublishing(mMatchITSTPCQC.getHistoEtaTPCPhysPrim());
     getObjectsManager()->startPublishing(mMatchITSTPCQC.getFractionITSTPCmatchEtaPhysPrim());
   }
 }
 
-void ITSTPCMatchingTask::startOfActivity(Activity& activity)
+void ITSTPCMatchingTask::startOfActivity(const Activity& activity)
 {
   ILOG(Debug, Devel) << "startOfActivity " << activity.mId << ENDM;
   mMatchITSTPCQC.reset();
@@ -122,7 +124,7 @@ void ITSTPCMatchingTask::endOfCycle()
   mMatchITSTPCQC.finalize();
 }
 
-void ITSTPCMatchingTask::endOfActivity(Activity& /*activity*/)
+void ITSTPCMatchingTask::endOfActivity(const Activity& /*activity*/)
 {
   ILOG(Debug, Devel) << "endOfActivity" << ENDM;
 }

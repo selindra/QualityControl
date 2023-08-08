@@ -52,6 +52,7 @@ ITSFeeTask::~ITSFeeTask()
   delete mLaneStatusSummaryOL;
   delete mLaneStatusSummaryGlobal;
   delete mRDHSummary;
+  delete mRDHSummaryCumulative;
   for (int i = 0; i < NFlags; i++) {
     delete mLaneStatus[i];
     delete mLaneStatusCumulative[i];
@@ -108,13 +109,26 @@ void ITSFeeTask::createFeePlots()
     getObjectsManager()->startPublishing(mLaneStatusSummary[i]); // mLaneStatusSummary
   }
 
-  mLaneStatusSummaryIB = new TH1I("LaneStatusSummary/LaneStatusSummaryIB", "Lane Status Summary IB", 3, 0, 3);
+  mLaneStatusSummaryIB = new TH1D("LaneStatusSummary/LaneStatusSummaryIB", "Lane Status Summary IB", 3, 0, 3);
   getObjectsManager()->startPublishing(mLaneStatusSummaryIB); // mLaneStatusSummaryIB
-  mLaneStatusSummaryML = new TH1I("LaneStatusSummary/LaneStatusSummaryML", "Lane Status Summary ML", 3, 0, 3);
+  mLaneStatusSummaryML = new TH1D("LaneStatusSummary/LaneStatusSummaryML", "Lane Status Summary ML", 3, 0, 3);
   getObjectsManager()->startPublishing(mLaneStatusSummaryML); // mLaneStatusSummaryML
-  mLaneStatusSummaryOL = new TH1I("LaneStatusSummary/LaneStatusSummaryOL", "Lane Status Summary OL", 3, 0, 3);
+  mLaneStatusSummaryOL = new TH1D("LaneStatusSummary/LaneStatusSummaryOL", "Lane Status Summary OL", 3, 0, 3);
   getObjectsManager()->startPublishing(mLaneStatusSummaryOL); // mLaneStatusSummaryOL
-  mLaneStatusSummaryGlobal = new TH1I("LaneStatusSummary/LaneStatusSummaryGlobal", "Lane Status Summary Global", 3, 0, 3);
+
+  mLaneStatusSummaryGlobal = new TH1D("LaneStatusSummary/LaneStatusSummaryGlobal", "Lane Status Summary Global", 4, 0, 4);
+  mLaneStatusSummaryGlobal->SetMaximum(1);
+  TLine* mLaneStatusSummaryLine = new TLine(0, 0.1, 4, 0.1);
+  mLaneStatusSummaryLine->SetLineStyle(9);
+  mLaneStatusSummaryLine->SetLineColor(kRed);
+
+  TLatex* mLaneStatusSummaryInfo = new TLatex(0.1, 0.11, Form("#bf{%s}", "Threshold value"));
+  mLaneStatusSummaryInfo->SetTextSize(0.05);
+  mLaneStatusSummaryInfo->SetTextFont(43);
+  mLaneStatusSummaryInfo->SetTextColor(kRed);
+
+  mLaneStatusSummaryGlobal->GetListOfFunctions()->Add(mLaneStatusSummaryLine);
+  mLaneStatusSummaryGlobal->GetListOfFunctions()->Add(mLaneStatusSummaryInfo);
   getObjectsManager()->startPublishing(mLaneStatusSummaryGlobal); // mLaneStatusSummaryGlobal
 
   mFlag1Check = new TH2I("Flag1Check", "Flag 1 Check", NFees, 0, NFees, 3, 0, 3); // Row 1 : transmission_timeout, Row 2 : packet_overflow, Row 3 : lane_starts_violation
@@ -129,8 +143,11 @@ void ITSFeeTask::createFeePlots()
   mPayloadSize = new TH2F("PayloadSize", "Payload Size", NFees, 0, NFees, mNPayloadSizeBins, 0, 4.096e4);
   getObjectsManager()->startPublishing(mPayloadSize); // mPayloadSize
 
-  mRDHSummary = new TH2I("RDHSummary", "RDH Summary", NFees, 0, NFees, 7, 0, 7);
+  mRDHSummary = new TH2I("RDHSummary", "RDH Summary", NFees, 0, NFees, 9, 0, 9);
   getObjectsManager()->startPublishing(mRDHSummary);
+
+  mRDHSummaryCumulative = new TH2I("RDHSummaryCumulative", "RDH Summary since SOX", NFees, 0, NFees, 9, 0, 9);
+  getObjectsManager()->startPublishing(mRDHSummaryCumulative);
 }
 
 void ITSFeeTask::setAxisTitle(TH1* object, const char* xTitle, const char* yTitle)
@@ -196,7 +213,24 @@ void ITSFeeTask::setPlotsFormat()
     mRDHSummary->GetYaxis()->SetBinLabel(5, "ClockEvent");
     mRDHSummary->GetYaxis()->SetBinLabel(6, "TimebaseEvent");
     mRDHSummary->GetYaxis()->SetBinLabel(7, "TimebaseUnsyncEvent");
+    mRDHSummary->GetYaxis()->SetBinLabel(8, "Trigger ramp bit");
+    mRDHSummary->GetYaxis()->SetBinLabel(9, "Recovery bit");
     drawLayerName(mRDHSummary);
+  }
+
+  if (mRDHSummaryCumulative) {
+    setAxisTitle(mRDHSummaryCumulative, "FEEId", "");
+    mRDHSummaryCumulative->SetStats(0);
+    mRDHSummaryCumulative->GetYaxis()->SetBinLabel(1, "Missing data");
+    mRDHSummaryCumulative->GetYaxis()->SetBinLabel(2, "Warning");
+    mRDHSummaryCumulative->GetYaxis()->SetBinLabel(3, "Error");
+    mRDHSummaryCumulative->GetYaxis()->SetBinLabel(4, "Fault");
+    mRDHSummaryCumulative->GetYaxis()->SetBinLabel(5, "ClockEvent");
+    mRDHSummaryCumulative->GetYaxis()->SetBinLabel(6, "TimebaseEvent");
+    mRDHSummaryCumulative->GetYaxis()->SetBinLabel(7, "TimebaseUnsyncEvent");
+    mRDHSummaryCumulative->GetYaxis()->SetBinLabel(8, "Trigger ramp bit");
+    mRDHSummaryCumulative->GetYaxis()->SetBinLabel(9, "Recovery bit");
+    drawLayerName(mRDHSummaryCumulative);
   }
 
   for (int i = 0; i < NFlags; i++) {
@@ -248,7 +282,7 @@ void ITSFeeTask::setPlotsFormat()
   }
 
   if (mLaneStatusSummaryIB) {
-    setAxisTitle(mLaneStatusSummaryIB, "", "#Lanes");
+    setAxisTitle(mLaneStatusSummaryIB, "", "Fraction of Lanes");
     for (int i = 0; i < NFlags; i++) {
       mLaneStatusSummaryIB->GetXaxis()->SetBinLabel(i + 1, mLaneStatusFlag[i].c_str());
     }
@@ -257,7 +291,7 @@ void ITSFeeTask::setPlotsFormat()
   }
 
   if (mLaneStatusSummaryML) {
-    setAxisTitle(mLaneStatusSummaryML, "", "#Lanes");
+    setAxisTitle(mLaneStatusSummaryML, "", "Fraction of Lanes");
     for (int i = 0; i < NFlags; i++) {
       mLaneStatusSummaryML->GetXaxis()->SetBinLabel(i + 1, mLaneStatusFlag[i].c_str());
     }
@@ -266,7 +300,7 @@ void ITSFeeTask::setPlotsFormat()
   }
 
   if (mLaneStatusSummaryOL) {
-    setAxisTitle(mLaneStatusSummaryOL, "", "#Lanes");
+    setAxisTitle(mLaneStatusSummaryOL, "", "Fraction of Lanes");
     for (int i = 0; i < NFlags; i++) {
       mLaneStatusSummaryOL->GetXaxis()->SetBinLabel(i + 1, mLaneStatusFlag[i].c_str());
     }
@@ -275,10 +309,11 @@ void ITSFeeTask::setPlotsFormat()
   }
 
   if (mLaneStatusSummaryGlobal) {
-    setAxisTitle(mLaneStatusSummaryGlobal, "", "#Lanes");
+    setAxisTitle(mLaneStatusSummaryGlobal, "", "Fraction Lanes");
     for (int i = 0; i < NFlags; i++) {
       mLaneStatusSummaryGlobal->GetXaxis()->SetBinLabel(i + 1, mLaneStatusFlag[i].c_str());
     }
+    mLaneStatusSummaryGlobal->GetXaxis()->SetBinLabel(4, "TOTAL");
     mLaneStatusSummaryGlobal->GetXaxis()->CenterLabels();
     mLaneStatusSummaryGlobal->SetStats(0);
   }
@@ -302,7 +337,7 @@ void ITSFeeTask::setPlotsFormat()
   }
 }
 
-void ITSFeeTask::startOfActivity(Activity& activity)
+void ITSFeeTask::startOfActivity(const Activity& activity)
 {
   ILOG(Debug, Devel) << "startOfActivity : " << activity.mId << ENDM;
   mRunNumber = activity.mId;
@@ -321,12 +356,17 @@ void ITSFeeTask::monitorData(o2::framework::ProcessingContext& ctx)
   int nStops[NFees] = {};
   int payloadTot[NFees] = {};
 
-  std::vector<InputSpec> rawDataFilter{ InputSpec{ "", ConcreteDataTypeMatcher{ "DS", "RAWDATA0" }, Lifetime::Timeframe } };
-
-  rawDataFilter.push_back(InputSpec{ "", ConcreteDataTypeMatcher{ "ITS", "RAWDATA" }, Lifetime::Timeframe });
-  DPLRawParser parser(ctx.inputs(), rawDataFilter);
+  DPLRawParser parser(ctx.inputs());
 
   resetLanePlotsAndCounters(); // action taken depending on mResetLaneStatus and mResetPayload
+
+  // manual call of DPL data iterator to catch exceptoin:
+  try {
+    auto it = parser.begin();
+  } catch (const std::runtime_error& error) {
+    LOG(error) << "Error during parsing DPL data: " << error.what();
+    return;
+  }
 
   for (auto it = parser.begin(), end = parser.end(); it != end; ++it) {
     auto rdh = reinterpret_cast<const o2::header::RDHAny*>(it.raw());
@@ -338,7 +378,6 @@ void ITSFeeTask::monitorData(o2::framework::ProcessingContext& ctx)
     int ifee = 3 * StaveBoundary[ilayer] - (StaveBoundary[ilayer] - StaveBoundary[NLayerIB]) * (ilayer >= NLayerIB) + istave * (3 - (ilayer >= NLayerIB)) + ilink;
     int memorysize = (int)(o2::raw::RDHUtils::getMemorySize(rdh));
     int headersize = o2::raw::RDHUtils::getHeaderSize(rdh);
-
     payloadTot[ifee] += memorysize - headersize;
     bool clockEvt = false;
 
@@ -346,28 +385,55 @@ void ITSFeeTask::monitorData(o2::framework::ProcessingContext& ctx)
     //  get detector field
     uint32_t summaryLaneStatus = o2::raw::RDHUtils::getDetectorField(rdh);
     // fill statusVsFeeId if set
-    if (summaryLaneStatus & (1 << 0))
+    if (summaryLaneStatus & (1 << 0)) {
       mRDHSummary->Fill(ifee, 0); // missing data
-    if (summaryLaneStatus & (1 << 1))
+      mRDHSummaryCumulative->Fill(ifee, 0);
+    }
+    if (summaryLaneStatus & (1 << 1)) {
       mRDHSummary->Fill(ifee, 1); // warning
-    if (summaryLaneStatus & (1 << 2))
+      mRDHSummaryCumulative->Fill(ifee, 1);
+    }
+    if (summaryLaneStatus & (1 << 2)) {
       mRDHSummary->Fill(ifee, 2); // error
-    if (summaryLaneStatus & (1 << 3))
+      mRDHSummaryCumulative->Fill(ifee, 2);
+    }
+    if (summaryLaneStatus & (1 << 3)) {
       mRDHSummary->Fill(ifee, 3); // fault
-    if (summaryLaneStatus & (1 << 27)) {
+      mRDHSummaryCumulative->Fill(ifee, 3);
+    }
+    if (summaryLaneStatus & (1 << 4)) {
+      mRDHSummary->Fill(ifee, 7); // trigger ramp bit
+      mRDHSummaryCumulative->Fill(ifee, 7);
+    }
+    if (summaryLaneStatus & (1 << 5)) {
+      mRDHSummary->Fill(ifee, 8); // lane recovery bit
+      mRDHSummaryCumulative->Fill(ifee, 8);
+    }
+    if (summaryLaneStatus & (1 << 26)) {
       mRDHSummary->Fill(ifee, 4); // clock evt
+      mRDHSummaryCumulative->Fill(ifee, 4);
       clockEvt = true;
     }
-    if (summaryLaneStatus & (1 << 25))
+    if (summaryLaneStatus & (1 << 25)) {
       mRDHSummary->Fill(ifee, 5); // Timebase evt
-    if (summaryLaneStatus & (1 << 24))
-      mRDHSummary->Fill(ifee, 6); // Timebase Unsync evt
-
+      mRDHSummaryCumulative->Fill(ifee, 5);
+    }
+    if (summaryLaneStatus & (1 << 24)) {
+      mRDHSummary->Fill(ifee, 6);
+      mRDHSummaryCumulative->Fill(ifee, 6); // Timebase Unsync evt
+    }
     if ((int)(o2::raw::RDHUtils::getStop(rdh)) && it.size()) { // looking into the DDW0 from the closing packet
-      auto const* ddw = reinterpret_cast<const GBTDiagnosticWord*>(it.data());
-      uint64_t laneInfo = ddw->laneWord.laneBits.laneStatus;
-      uint8_t flag1 = ddw->indexWord.indexBits.flag1;
+      const GBTDiagnosticWord* ddw;
+      try {
+        ddw = reinterpret_cast<const GBTDiagnosticWord*>(it.data());
+      } catch (const std::runtime_error& error) {
+        LOG(error) << "Error during reading late diagnostic data: " << error.what();
+        return;
+      }
 
+      uint64_t laneInfo = ddw->laneWord.laneBits.laneStatus;
+
+      uint8_t flag1 = ddw->indexWord.indexBits.flag1;
       for (int i = 0; i < 3; i++) {
         if (flag1 >> i & 0x1) {
           mFlag1Check->Fill(ifee, i);
@@ -392,7 +458,6 @@ void ITSFeeTask::monitorData(o2::framework::ProcessingContext& ctx)
         }
       }
 
-      // std::cout << "Layer:"<< ilayer << "Stave:" << istave << std::endl;
       for (int i = 0; i < NLanesMax; i++) {
         int laneValue = laneInfo >> (2 * i) & 0x3;
         if (laneValue) {
@@ -431,6 +496,7 @@ void ITSFeeTask::monitorData(o2::framework::ProcessingContext& ctx)
   // Filling histograms: loop over mStatusFlagNumber[ilayer][istave][ilane][iflag]
   int counterSummary[4][3] = { { 0 } };
   int layerSummary[7][3] = { { 0 } };
+
   for (int iflag = 0; iflag < NFlags; iflag++) {
     for (int ilayer = 0; ilayer < NLayer; ilayer++) {
       for (int istave = 0; istave < NStaves[ilayer]; istave++) {
@@ -454,11 +520,13 @@ void ITSFeeTask::monitorData(o2::framework::ProcessingContext& ctx)
       }
       mLaneStatusSummary[ilayer]->SetBinContent(iflag + 1, layerSummary[ilayer][iflag]);
     }
-    mLaneStatusSummaryGlobal->SetBinContent(iflag + 1, counterSummary[0][iflag]);
-    mLaneStatusSummaryIB->SetBinContent(iflag + 1, counterSummary[1][iflag]);
-    mLaneStatusSummaryML->SetBinContent(iflag + 1, counterSummary[2][iflag]);
-    mLaneStatusSummaryOL->SetBinContent(iflag + 1, counterSummary[3][iflag]);
+    mLaneStatusSummaryGlobal->SetBinContent(iflag + 1, 1. * counterSummary[0][iflag] / NLanesTotal);
+    mLaneStatusSummaryIB->SetBinContent(iflag + 1, 1. * counterSummary[1][iflag] / NLanesIB);
+    mLaneStatusSummaryML->SetBinContent(iflag + 1, 1. * counterSummary[2][iflag] / NLanesML);
+    mLaneStatusSummaryOL->SetBinContent(iflag + 1, 1. * counterSummary[3][iflag] / NLanesOL);
   }
+
+  mLaneStatusSummaryGlobal->SetBinContent(4, 1. * (counterSummary[0][0] + counterSummary[0][1] + counterSummary[0][2]) / NLanesTotal);
 
   for (int i = 0; i < NFees; i++) {
     if (nStops[i]) {
@@ -467,7 +535,7 @@ void ITSFeeTask::monitorData(o2::framework::ProcessingContext& ctx)
     }
   }
 
-  mTimeFrameId = ctx.inputs().get<int>("G");
+  mTimeFrameId++;
 
   mTFInfo->Fill(mTimeFrameId);
   end = std::chrono::high_resolution_clock::now();
@@ -516,7 +584,7 @@ void ITSFeeTask::endOfCycle()
   ILOG(Debug, Devel) << "endOfCycle" << ENDM;
 }
 
-void ITSFeeTask::endOfActivity(Activity& /*activity*/)
+void ITSFeeTask::endOfActivity(const Activity& /*activity*/)
 {
   ILOG(Debug, Devel) << "endOfActivity" << ENDM;
 }
@@ -538,7 +606,7 @@ void ITSFeeTask::resetLanePlotsAndCounters()
     mLaneStatusSummaryIB->Reset();
     mLaneStatusSummaryML->Reset();
     mLaneStatusSummaryOL->Reset();
-    mLaneStatusSummaryGlobal->Reset();
+    mLaneStatusSummaryGlobal->Reset("ICES");
     for (int i = 0; i < NFlags; i++) {
       mLaneStatus[i]->Reset("ICES");
       mLaneStatusOverview[i]->Reset("content");
@@ -557,7 +625,7 @@ void ITSFeeTask::resetLanePlotsAndCounters()
 void ITSFeeTask::reset()
 {
   resetGeneralPlots();
-  ILOG(Info, Support) << "Reset" << ENDM;
+  ILOG(Debug, Devel) << "Reset" << ENDM;
 }
 
 } // namespace o2::quality_control_modules::its

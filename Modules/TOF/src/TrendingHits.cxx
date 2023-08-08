@@ -23,6 +23,7 @@
 #include "QualityControl/MonitorObject.h"
 #include "QualityControl/Reductor.h"
 #include "QualityControl/RootClassFactory.h"
+#include "QualityControl/ActivityHelpers.h"
 #include <boost/property_tree/ptree.hpp>
 #include <TH1.h>
 #include <TCanvas.h>
@@ -36,9 +37,9 @@ using namespace o2::quality_control::core;
 using namespace o2::quality_control::postprocessing;
 using namespace o2::quality_control_modules::tof;
 
-void TrendingHits::configure(std::string name, const boost::property_tree::ptree& config)
+void TrendingHits::configure(const boost::property_tree::ptree& config)
 {
-  mConfig = TrendingConfigTOF(name, config);
+  mConfig = TrendingConfigTOF(getID(), config);
 }
 
 void TrendingHits::initialize(Trigger, framework::ServiceRegistryRef)
@@ -58,7 +59,7 @@ void TrendingHits::initialize(Trigger, framework::ServiceRegistryRef)
   getObjectsManager()->startPublishing(mTrend.get());
 }
 
-//todo: see if OptimizeBaskets() indeed helps after some time
+// todo: see if OptimizeBaskets() indeed helps after some time
 void TrendingHits::update(Trigger t, framework::ServiceRegistryRef services)
 {
   auto& qcdb = services.get<repository::DatabaseInterface>();
@@ -74,7 +75,9 @@ void TrendingHits::finalize(Trigger t, framework::ServiceRegistryRef)
 
 void TrendingHits::trendValues(const Trigger& t, repository::DatabaseInterface& qcdb)
 {
-  mTime = t.timestamp / 1000; // ROOT expects seconds since epoch
+  mTime = activity_helpers::isLegacyValidity(t.activity.mValidity)
+            ? t.timestamp / 1000
+            : t.activity.mValidity.getMax() / 1000; // ROOT expects seconds since epoch.
   mMetaData.runNumber = t.activity.mId;
 
   for (auto& dataSource : mConfig.dataSources) {
@@ -112,9 +115,14 @@ void TrendingHits::generatePlots()
 
     // Before we generate any new plots, we have to delete existing under the same names.
     // It seems that ROOT cannot handle an existence of two canvases with a common name in the same process.
-    if (mPlots.count(plot.name)) {
-      getObjectsManager()->stopPublishing(plot.name);
-      delete mPlots[plot.name];
+    TCanvas* c;
+    if (!mPlots.count(plot.name)) {
+      c = new TCanvas(plot.name.c_str(), plot.title.c_str());
+      mPlots[plot.name] = c;
+      getObjectsManager()->startPublishing(c);
+    } else {
+      c = (TCanvas*)mPlots[plot.name];
+      c->cd();
     }
 
     // we determine the order of the plot, i.e. if it is a histogram (1), graph (2), or any higher dimension.
@@ -122,12 +130,7 @@ void TrendingHits::generatePlots()
     // we have to delete the graph errors after the plot is saved, unfortunately the canvas does not take its ownership
     TGraphErrors* graphErrors = nullptr;
 
-    TCanvas* c = new TCanvas();
-
     mTrend->Draw(plot.varexp.c_str(), plot.selection.c_str(), plot.option.c_str());
-
-    c->SetName(plot.name.c_str());
-    c->SetTitle(plot.title.c_str());
 
     // For graphs we allow to draw errors if they are specified.
     if (!plot.graphErrors.empty()) {
@@ -182,8 +185,5 @@ void TrendingHits::generatePlots()
     } else {
       ILOG(Error, Devel) << "Could not get the htemp histogram of the plot '" << plot.name << "'." << ENDM;
     }
-
-    mPlots[plot.name] = c;
-    getObjectsManager()->startPublishing(c);
   }
 }

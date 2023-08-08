@@ -20,6 +20,7 @@
 #include "QualityControl/MonitorObject.h"
 #include "QualityControl/RootClassFactory.h"
 #include "QualityControl/QcInfoLogger.h"
+#include "QualityControl/ActivityHelpers.h"
 #include "TPC/TrendingTaskTPC.h"
 #include "QualityControl/RepoPathUtils.h"
 
@@ -45,10 +46,9 @@ using namespace o2::quality_control::core;
 using namespace o2::quality_control::postprocessing;
 using namespace o2::quality_control_modules::tpc;
 
-void TrendingTaskTPC::configure(std::string name,
-                                const boost::property_tree::ptree& config)
+void TrendingTaskTPC::configure(const boost::property_tree::ptree& config)
 {
-  mConfig = TrendingTaskConfigTPC(name, config);
+  mConfig = TrendingTaskConfigTPC(getID(), config);
 }
 
 void TrendingTaskTPC::initialize(Trigger, framework::ServiceRegistryRef services)
@@ -150,7 +150,9 @@ void TrendingTaskTPC::finalize(Trigger t, framework::ServiceRegistryRef)
 void TrendingTaskTPC::trendValues(const Trigger& t,
                                   repository::DatabaseInterface& qcdb)
 {
-  mTime = t.timestamp / 1000; // ROOT expects seconds since epoch.
+  mTime = activity_helpers::isLegacyValidity(t.activity.mValidity)
+            ? t.timestamp / 1000
+            : t.activity.mValidity.getMax() / 1000; // ROOT expects seconds since epoch.
   mMetaData.runNumber = t.activity.mId;
 
   for (auto& dataSource : mConfig.dataSources) {

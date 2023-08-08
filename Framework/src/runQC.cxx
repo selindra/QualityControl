@@ -28,6 +28,7 @@
 
 #include <vector>
 #include <utility>
+#include <regex>
 #include <boost/asio/ip/host_name.hpp>
 #include <DataSampling/DataSampling.h>
 #include <Configuration/ConfigurationFactory.h>
@@ -95,8 +96,12 @@ using namespace std::chrono;
 bool validateArguments(const ConfigContext& config)
 {
   const std::string qcConfigurationSource = config.options().get<std::string>("config");
+  std::regex configBackend(".+://.+$");
   if (qcConfigurationSource.empty()) {
     ILOG(Warning, Support) << "No configuration path specified, returning an empty workflow." << ENDM;
+    return false;
+  } else if (!std::regex_match(qcConfigurationSource, configBackend)) {
+    ILOG(Error, Support) << "The --config option expects a backend name (e.g. json:// or consul-json://) preceding the path. User specified: " << qcConfigurationSource << ENDM;
     return false;
   }
 
@@ -168,7 +173,15 @@ WorkflowSpec defineDataProcessing(const ConfigContext& config)
     ILOG_INST.filterDiscardDebug(infologgerFilterDiscardDebug);
     ILOG_INST.filterDiscardLevel(infologgerDiscardLevel);
     ILOG_INST.filterDiscardSetFile(infologgerDiscardFile.c_str(), 0, 0, 0, true /*Do not store Debug messages in file*/);
-    o2::quality_control::core::QcInfoLogger::setFacility("runQC");
+
+    std::string id = "runQC";
+    for (size_t i = 0; i < config.argc(); i++) {
+      if (std::strcmp(config.argv()[i], "--id") == 0 && i + 1 < config.argc()) {
+        id = config.argv()[i + 1];
+        break;
+      }
+    }
+    o2::quality_control::core::QcInfoLogger::setFacility(id);
 
     ILOG(Info, Devel) << "Using config file '" << qcConfigurationSource << "'" << ENDM;
     auto keyValuesToOverride = quality_control::core::parseOverrideValues(config.options().get<std::string>("override-values"));

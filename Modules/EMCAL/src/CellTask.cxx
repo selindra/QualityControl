@@ -30,6 +30,7 @@
 #include "EMCALBase/Geometry.h"
 #include "EMCALCalib/CalibDB.h"
 #include "EMCALCalib/BadChannelMap.h"
+#include "EMCALCalib/GainCalibrationFactors.h"
 #include "EMCALCalib/TimeCalibrationParams.h"
 #include <Framework/ConcreteDataMatcher.h>
 #include <Framework/DataRefUtils.h>
@@ -101,9 +102,17 @@ void CellTask::initialize(o2::framework::InitContext& /*ctx*/)
     return result;
   };
 
+  if (hasConfigValue("debuggerDelay")) {
+    if (get_bool("debuggerDelay")) {
+      // set delay in order to allow for attaching the debugger
+      sleep(20);
+    }
+  }
+
   mTaskSettings.mHasAmpVsCellID = get_bool(getConfigValueLower("hasAmpVsCell")),
   mTaskSettings.mHasTimeVsCellID = get_bool(getConfigValueLower("hasTimeVsCell")),
   mTaskSettings.mHasHistosCalib = get_bool(getConfigValueLower("hasHistCalib"));
+  mTaskSettings.mCalibrateEnergy = get_bool(getConfigValue("calibrateEnergy"));
   if (hasConfigValue("thresholdTimePhys")) {
     mTaskSettings.mAmpThresholdTimePhys = get_double(getConfigValue("thresholdTimePhys"));
   }
@@ -116,6 +125,7 @@ void CellTask::initialize(o2::framework::InitContext& /*ctx*/)
   if (hasConfigValue("thresholdPHYS")) {
     mTaskSettings.mThresholdPHYS = get_double(getConfigValue("thresholdPHYS"));
   }
+  ILOG(Info, Support) << "Apply energy calibration: " << (mTaskSettings.mCalibrateEnergy ? "yes" : "no") << ENDM;
   ILOG(Info, Support) << "Amplitude cut time histograms (PhysTrigger) " << mTaskSettings.mAmpThresholdTimePhys << ENDM;
   ILOG(Info, Support) << "Amplitude cut time histograms (CalibTrigger) " << mTaskSettings.mAmpThresholdTimeCalib << ENDM;
   ILOG(Info, Support) << "Amplitude cut occupancy histograms (PhysTrigger) " << mTaskSettings.mThresholdPHYS << ENDM;
@@ -193,18 +203,6 @@ void CellTask::initialize(o2::framework::InitContext& /*ctx*/)
   mCells_ev_sm->SetStats(false);
   getObjectsManager()->startPublishing(mCells_ev_sm);
 
-  mCells_ev_sm_good = new TH2D("ncellsGoodPerEventSupermodule", "# of good Cells per Events vs supermodule ID", 100, 0, 100, 20, -0.5, 19.5);
-  mCells_ev_sm_good->GetYaxis()->SetTitle("Supermodule");
-  mCells_ev_sm_good->GetXaxis()->SetTitle("Good cells/Event");
-  mCells_ev_sm_good->SetStats(false);
-  getObjectsManager()->startPublishing(mCells_ev_sm_good);
-
-  mCells_ev_sm_bad = new TH2D("ncellsBadPerEventSupermodule", "# of bad Cells per Events vs supermodule ID", 100, 0, 100, 20, -0.5, 19.5);
-  mCells_ev_sm_bad->GetYaxis()->SetTitle("Supermodule");
-  mCells_ev_sm_bad->GetXaxis()->SetTitle("Bad cells/Event");
-  mCells_ev_sm_bad->SetStats(false);
-  getObjectsManager()->startPublishing(mCells_ev_sm_bad);
-
   mCells_ev_smThr = new TH2D("ncellsPerEventSupermoduleWThr", "# of Cells per Events vs supermodule ID Threshold", 20, 0, 20, 20, -0.5, 19.5);
   mCells_ev_smThr->GetYaxis()->SetTitle("Supermodule");
   mCells_ev_smThr->GetXaxis()->SetTitle("Cells/Event");
@@ -216,18 +214,6 @@ void CellTask::initialize(o2::framework::InitContext& /*ctx*/)
   mCells_ev->GetYaxis()->SetTitle("Events");
   mCells_ev->SetStats(false);
   getObjectsManager()->startPublishing(mCells_ev);
-
-  mCells_ev_good = new TH1D("ncellsGoodPerEventTot", "# good of Cells per event", 1000, 0, 1000);
-  mCells_ev_good->GetXaxis()->SetTitle("Good cells/Event");
-  mCells_ev_good->GetYaxis()->SetTitle("Events");
-  mCells_ev_good->SetStats(false);
-  getObjectsManager()->startPublishing(mCells_ev_good);
-
-  mCells_ev_bad = new TH1D("ncellsBadPerEventTot", "# bad of Cells per event", 1000, 0, 1000);
-  mCells_ev_bad->GetXaxis()->SetTitle("Bad cells/Event");
-  mCells_ev_bad->GetYaxis()->SetTitle("Events");
-  mCells_ev_bad->SetStats(false);
-  getObjectsManager()->startPublishing(mCells_ev_bad);
 
   mCells_ev_Thres = new TH1D("ncellPerEventTot_Thres", "# of Cells per event above threshold", 100, 0, 100);
   mCells_ev_Thres->SetStats(false);
@@ -241,18 +227,6 @@ void CellTask::initialize(o2::framework::InitContext& /*ctx*/)
   mCells_ev_EMCAL->SetStats(false);
   getObjectsManager()->startPublishing(mCells_ev_EMCAL);
 
-  mCells_ev_EMCAL_good = new TH1D("ncellsGoodPerEventEMCALTot", "# of good Cells per events in EMCAL", 300, 0, 300);
-  mCells_ev_EMCAL_good->GetXaxis()->SetTitle("Good cells/Event");
-  mCells_ev_EMCAL_good->GetYaxis()->SetTitle("Events");
-  mCells_ev_EMCAL_good->SetStats(false);
-  getObjectsManager()->startPublishing(mCells_ev_EMCAL_good);
-
-  mCells_ev_EMCAL_bad = new TH1D("ncellsBadPerEventEMCALTot", "# of bad Cells per events in EMCAL", 300, 0, 300);
-  mCells_ev_EMCAL_bad->GetXaxis()->SetTitle("Bad cells/Event");
-  mCells_ev_EMCAL_bad->GetYaxis()->SetTitle("Events");
-  mCells_ev_EMCAL_bad->SetStats(false);
-  getObjectsManager()->startPublishing(mCells_ev_EMCAL_bad);
-
   mCells_ev_EMCAL_Thres = new TH1D("ncellPerEventEMCALTot_Thres", "# of Cells per event in EMCAL abvoe threshold", 100, 0, 100);
   mCells_ev_EMCAL_Thres->GetXaxis()->SetTitle("Cells/Event");
   mCells_ev_EMCAL_Thres->GetYaxis()->SetTitle("Events");
@@ -265,40 +239,78 @@ void CellTask::initialize(o2::framework::InitContext& /*ctx*/)
   mCells_ev_DCAL->SetStats(false);
   getObjectsManager()->startPublishing(mCells_ev_DCAL);
 
-  mCells_ev_DCAL_good = new TH1D("ncellsGoodPerEventDCALTot", "# of good Cells per event in DCAL", 300, 0, 300);
-  mCells_ev_DCAL_good->GetXaxis()->SetTitle("Good cells/Event");
-  mCells_ev_DCAL_good->GetYaxis()->SetTitle("Events");
-  mCells_ev_DCAL_good->SetStats(false);
-  getObjectsManager()->startPublishing(mCells_ev_DCAL_good);
-
-  mCells_ev_DCAL_bad = new TH1D("ncellsBaddPerEventDCALTot", "# of bad Cells per event in DCAL", 300, 0, 300);
-  mCells_ev_DCAL_bad->GetXaxis()->SetTitle("Badd cells/Event");
-  mCells_ev_DCAL_bad->GetYaxis()->SetTitle("Events");
-  mCells_ev_DCAL_bad->SetStats(false);
-  getObjectsManager()->startPublishing(mCells_ev_DCAL_bad);
-
   mCells_ev_DCAL_Thres = new TH1D("ncellPerEventDCALTot_Thres", "# of Cells per event in DCAL above threshold", 100, 0, 100);
   mCells_ev_DCAL_Thres->GetXaxis()->SetTitle("Cells/Event");
   mCells_ev_DCAL_Thres->GetYaxis()->SetTitle("Events");
   mCells_ev_DCAL_Thres->SetStats(false);
   getObjectsManager()->startPublishing(mCells_ev_DCAL_Thres);
 
-  mFracGoodCellsEvent = new TH2D("fractionGoodCellsEvent", "Fraction of good cells / event", 3, -0.5, 2.5, 11, 0., 1.1);
-  mFracGoodCellsEvent->GetXaxis()->SetBinLabel(1, "All");
-  mFracGoodCellsEvent->GetXaxis()->SetBinLabel(2, "EMCAL");
-  mFracGoodCellsEvent->GetXaxis()->SetBinLabel(3, "DCAL");
-  mFracGoodCellsEvent->GetYaxis()->SetTitle("Fraction good");
-  mFracGoodCellsEvent->SetStats(false);
-  getObjectsManager()->startPublishing(mFracGoodCellsEvent);
+  if (mTaskSettings.mHasHistosCalib) {
+    mCells_ev_sm_good = new TH2D("ncellsGoodPerEventSupermodule", "# of good Cells per Events vs supermodule ID", 100, 0, 100, 20, -0.5, 19.5);
+    mCells_ev_sm_good->GetYaxis()->SetTitle("Supermodule");
+    mCells_ev_sm_good->GetXaxis()->SetTitle("Good cells/Event");
+    mCells_ev_sm_good->SetStats(false);
+    getObjectsManager()->startPublishing(mCells_ev_sm_good);
 
-  mFracGoodCellsSM = new TH2D("fractionGoodCellsSupermodule", "Fraction of good cells / supermodule", 20, -0.5, 19.5, 11, 0., 1.1);
-  mFracGoodCellsSM->GetXaxis()->SetTitle("Supermodule ID");
-  mFracGoodCellsSM->GetYaxis()->SetTitle("Fraction good");
-  mFracGoodCellsSM->SetStats(false);
-  getObjectsManager()->startPublishing(mFracGoodCellsSM);
+    mCells_ev_sm_bad = new TH2D("ncellsBadPerEventSupermodule", "# of bad Cells per Events vs supermodule ID", 100, 0, 100, 20, -0.5, 19.5);
+    mCells_ev_sm_bad->GetYaxis()->SetTitle("Supermodule");
+    mCells_ev_sm_bad->GetXaxis()->SetTitle("Bad cells/Event");
+    mCells_ev_sm_bad->SetStats(false);
+    getObjectsManager()->startPublishing(mCells_ev_sm_bad);
+
+    mCells_ev_good = new TH1D("ncellsGoodPerEventTot", "# good of Cells per event", 1000, 0, 1000);
+    mCells_ev_good->GetXaxis()->SetTitle("Good cells/Event");
+    mCells_ev_good->GetYaxis()->SetTitle("Events");
+    mCells_ev_good->SetStats(false);
+    getObjectsManager()->startPublishing(mCells_ev_good);
+
+    mCells_ev_bad = new TH1D("ncellsBadPerEventTot", "# bad of Cells per event", 1000, 0, 1000);
+    mCells_ev_bad->GetXaxis()->SetTitle("Bad cells/Event");
+    mCells_ev_bad->GetYaxis()->SetTitle("Events");
+    mCells_ev_bad->SetStats(false);
+    getObjectsManager()->startPublishing(mCells_ev_bad);
+
+    mCells_ev_EMCAL_good = new TH1D("ncellsGoodPerEventEMCALTot", "# of good Cells per events in EMCAL", 300, 0, 300);
+    mCells_ev_EMCAL_good->GetXaxis()->SetTitle("Good cells/Event");
+    mCells_ev_EMCAL_good->GetYaxis()->SetTitle("Events");
+    mCells_ev_EMCAL_good->SetStats(false);
+    getObjectsManager()->startPublishing(mCells_ev_EMCAL_good);
+
+    mCells_ev_EMCAL_bad = new TH1D("ncellsBadPerEventEMCALTot", "# of bad Cells per events in EMCAL", 300, 0, 300);
+    mCells_ev_EMCAL_bad->GetXaxis()->SetTitle("Bad cells/Event");
+    mCells_ev_EMCAL_bad->GetYaxis()->SetTitle("Events");
+    mCells_ev_EMCAL_bad->SetStats(false);
+    getObjectsManager()->startPublishing(mCells_ev_EMCAL_bad);
+
+    mCells_ev_DCAL_good = new TH1D("ncellsGoodPerEventDCALTot", "# of good Cells per event in DCAL", 300, 0, 300);
+    mCells_ev_DCAL_good->GetXaxis()->SetTitle("Good cells/Event");
+    mCells_ev_DCAL_good->GetYaxis()->SetTitle("Events");
+    mCells_ev_DCAL_good->SetStats(false);
+    getObjectsManager()->startPublishing(mCells_ev_DCAL_good);
+
+    mCells_ev_DCAL_bad = new TH1D("ncellsBaddPerEventDCALTot", "# of bad Cells per event in DCAL", 300, 0, 300);
+    mCells_ev_DCAL_bad->GetXaxis()->SetTitle("Badd cells/Event");
+    mCells_ev_DCAL_bad->GetYaxis()->SetTitle("Events");
+    mCells_ev_DCAL_bad->SetStats(false);
+    getObjectsManager()->startPublishing(mCells_ev_DCAL_bad);
+
+    mFracGoodCellsEvent = new TH2D("fractionGoodCellsEvent", "Fraction of good cells / event", 3, -0.5, 2.5, 11, 0., 1.1);
+    mFracGoodCellsEvent->GetXaxis()->SetBinLabel(1, "All");
+    mFracGoodCellsEvent->GetXaxis()->SetBinLabel(2, "EMCAL");
+    mFracGoodCellsEvent->GetXaxis()->SetBinLabel(3, "DCAL");
+    mFracGoodCellsEvent->GetYaxis()->SetTitle("Fraction good");
+    mFracGoodCellsEvent->SetStats(false);
+    getObjectsManager()->startPublishing(mFracGoodCellsEvent);
+
+    mFracGoodCellsSM = new TH2D("fractionGoodCellsSupermodule", "Fraction of good cells / supermodule", 20, -0.5, 19.5, 11, 0., 1.1);
+    mFracGoodCellsSM->GetXaxis()->SetTitle("Supermodule ID");
+    mFracGoodCellsSM->GetYaxis()->SetTitle("Fraction good");
+    mFracGoodCellsSM->SetStats(false);
+    getObjectsManager()->startPublishing(mFracGoodCellsSM);
+  }
 }
 
-void CellTask::startOfActivity(Activity& /*activity*/)
+void CellTask::startOfActivity(const Activity& /*activity*/)
 {
   ILOG(Debug, Devel) << "startOfActivity" << ENDM;
   reset();
@@ -308,17 +320,26 @@ void CellTask::startOfCycle()
 {
   mTimeFramesPerCycles = 0;
   ILOG(Debug, Support) << "startOfCycle" << ENDM;
-  std::map<std::string, std::string> metadata;
-  mBadChannelMap = retrieveConditionAny<o2::emcal::BadChannelMap>(o2::emcal::CalibDB::getCDBPathBadChannelMap(), metadata);
-  // it was EMC/BadChannelMap
-  if (!mBadChannelMap) {
-    ILOG(Info, Support) << "No Bad Channel Map object " << ENDM;
-  }
+  if (mTaskSettings.mHasHistosCalib) {
+    std::map<std::string, std::string> metadata;
+    mBadChannelMap = retrieveConditionAny<o2::emcal::BadChannelMap>(o2::emcal::CalibDB::getCDBPathBadChannelMap(), metadata);
+    // it was EMC/BadChannelMap
+    if (!mBadChannelMap) {
+      ILOG(Info, Support) << "No Bad Channel Map object " << ENDM;
+    }
 
-  mTimeCalib = retrieveConditionAny<o2::emcal::TimeCalibrationParams>(o2::emcal::CalibDB::getCDBPathTimeCalibrationParams(), metadata);
-  //"EMC/TimeCalibrationParams
-  if (!mTimeCalib) {
-    ILOG(Info, Support) << " No Time Calib object " << ENDM;
+    mTimeCalib = retrieveConditionAny<o2::emcal::TimeCalibrationParams>(o2::emcal::CalibDB::getCDBPathTimeCalibrationParams(), metadata);
+    //"EMC/TimeCalibrationParams
+    if (!mTimeCalib) {
+      ILOG(Info, Support) << " No Time Calib object " << ENDM;
+    }
+  }
+  if (mTaskSettings.mCalibrateEnergy) {
+    std::map<std::string, std::string> metadata;
+    mEnergyCalib = retrieveConditionAny<o2::emcal::GainCalibrationFactors>(o2::emcal::CalibDB::getCDBPathGainCalibrationParams(), metadata);
+    if (!mBadChannelMap) {
+      ILOG(Info, Support) << "No energy calibration object " << ENDM;
+    }
   }
 }
 
@@ -418,14 +439,19 @@ void CellTask::monitorData(o2::framework::ProcessingContext& ctx)
         ILOG(Debug, Support) << subev.mCellRange.getEntries() << " cells in subevent from equipment " << subev.mSpecification << ENDM;
         gsl::span<const o2::emcal::Cell> eventcells(cellsSubspec->second.data() + subev.mCellRange.getFirstEntry(), subev.mCellRange.getEntries());
         for (auto cell : eventcells) {
+          if (cell.getLEDMon()) {
+            // Drop LEDMON cells
+            continue;
+          }
           // int index = cell.getHighGain() ? 0 : (cell.getLowGain() ? 1 : -1);
           // int index = cell.getHighGain() ? 0 : 1;
           auto timeoffset = mTimeCalib ? mTimeCalib->getTimeCalibParam(cell.getTower(), cell.getLowGain()) : 0.;
+          auto energycalib = mEnergyCalib ? mEnergyCalib->getGainCalibFactors(cell.getTower()) : 1.;
           bool goodcell = true;
           if (mBadChannelMap) {
             goodcell = mBadChannelMap->getChannelStatus(cell.getTower()) == MaskType_t::GOOD_CELL;
           }
-          histos.fillHistograms(cell, goodcell, timeoffset, bcphase);
+          histos.fillHistograms(cell, goodcell, timeoffset, energycalib, bcphase);
           if (isPhysTrigger) {
             auto [sm, mod, iphi, ieta] = mGeometry->GetCellIndex(cell.getTower());
             numCellsSM[sm]++;
@@ -456,9 +482,6 @@ void CellTask::monitorData(o2::framework::ProcessingContext& ctx)
         mCells_ev_sm->Fill(numCellsSM[ism], ism);          // for experts
         mCells_ev_smThr->Fill(numCellsSM_Thres[ism], ism); // for experts
 
-        mCells_ev_sm_good->Fill(numCellsGood[ism], ism);
-        mCells_ev_sm_bad->Fill(numCellsBad[ism], ism);
-
         mCell_all += numCellsSM[ism];
         mCell_all_Thres += numCellsSM_Thres[ism];
         nGoodAll += numCellsGood[ism];
@@ -474,33 +497,38 @@ void CellTask::monitorData(o2::framework::ProcessingContext& ctx)
           nGoodDCAL += numCellsGood[ism];
           nBadDCAL += numCellsBad[ism];
         }
-        if (numCellsGood[ism] + numCellsBad[ism]) {
-          mFracGoodCellsSM->Fill(ism, static_cast<double>(numCellsGood[ism]) / static_cast<double>(numCellsGood[ism] + numCellsBad[ism]));
+        if (mTaskSettings.mHasHistosCalib) {
+          mCells_ev_sm_good->Fill(numCellsGood[ism], ism);
+          mCells_ev_sm_bad->Fill(numCellsBad[ism], ism);
+          if (numCellsGood[ism] + numCellsBad[ism]) {
+            mFracGoodCellsSM->Fill(ism, static_cast<double>(numCellsGood[ism]) / static_cast<double>(numCellsGood[ism] + numCellsBad[ism]));
+          }
         }
       }
       mCells_ev->Fill(mCell_all);
       mCells_ev_EMCAL->Fill(mCell_EMCAL);
       mCells_ev_DCAL->Fill(mCell_DCAL);
 
-      mCells_ev_good->Fill(nGoodAll);
-      mCells_ev_EMCAL_good->Fill(nGoodEMCAL);
-      mCells_ev_DCAL_good->Fill(nGoodDCAL);
-      mCells_ev_bad->Fill(nBadAll);
-      mCells_ev_EMCAL_bad->Fill(nBadEMCAL);
-      mCells_ev_DCAL_bad->Fill(nBadDCAL);
-
       mCells_ev_Thres->Fill(mCell_all_Thres);
       mCells_ev_EMCAL_Thres->Fill(mCell_EMCAL_Thres);
       mCells_ev_DCAL_Thres->Fill(mCell_DCAL_Thres);
 
-      if (nGoodAll + nBadAll) {
-        mFracGoodCellsEvent->Fill(0., static_cast<double>(nGoodAll) / static_cast<double>(nGoodAll + nBadAll));
-      }
-      if (nGoodEMCAL + nBadEMCAL) {
-        mFracGoodCellsEvent->Fill(1., static_cast<double>(nGoodEMCAL) / static_cast<double>(nGoodEMCAL + nBadEMCAL));
-      }
-      if (nGoodDCAL + nBadDCAL) {
-        mFracGoodCellsEvent->Fill(2., static_cast<double>(nGoodDCAL) / static_cast<double>(nGoodDCAL + nBadDCAL));
+      if (mTaskSettings.mHasHistosCalib) {
+        mCells_ev_good->Fill(nGoodAll);
+        mCells_ev_EMCAL_good->Fill(nGoodEMCAL);
+        mCells_ev_DCAL_good->Fill(nGoodDCAL);
+        mCells_ev_bad->Fill(nBadAll);
+        mCells_ev_EMCAL_bad->Fill(nBadEMCAL);
+        mCells_ev_DCAL_bad->Fill(nBadDCAL);
+        if (nGoodAll + nBadAll) {
+          mFracGoodCellsEvent->Fill(0., static_cast<double>(nGoodAll) / static_cast<double>(nGoodAll + nBadAll));
+        }
+        if (nGoodEMCAL + nBadEMCAL) {
+          mFracGoodCellsEvent->Fill(1., static_cast<double>(nGoodEMCAL) / static_cast<double>(nGoodEMCAL + nBadEMCAL));
+        }
+        if (nGoodDCAL + nBadDCAL) {
+          mFracGoodCellsEvent->Fill(2., static_cast<double>(nGoodDCAL) / static_cast<double>(nGoodDCAL + nBadDCAL));
+        }
       }
     }
 
@@ -518,7 +546,7 @@ void CellTask::endOfCycle()
   ILOG(Debug, Devel) << "endOfCycle" << ENDM;
 }
 
-void CellTask::endOfActivity(Activity& /*activity*/)
+void CellTask::endOfActivity(const Activity& /*activity*/)
 {
   ILOG(Debug, Devel) << "endOfActivity" << ENDM;
 }
@@ -698,6 +726,8 @@ void CellTask::CellHistograms::initForTrigger(const std::string trigger, const T
       mCellTimeSupermoduleCalib_tot = histBuilder1D("cellTimeCalib", "Cell Time Calib EMCAL,DCAL", 600, -400, 800);
       mCellTimeSupermoduleCalib_EMCAL = histBuilder1D("cellTimeCalib_EMCAL", "Cell Time Calib EMCAL", 600, -400, 800);
       mCellTimeSupermoduleCalib_DCAL = histBuilder1D("cellTimeCalib_DCAL", "Cell Time Calib DCAL", 600, -400, 800);
+
+      mCellAmplitudeTimeCalib = histBuilder2D("cellAmplitudeTimeCalib", "Cell amplitude vs. time (calibrated); E (GeV); t (ns)", 500, 0., 50., 800, -400., 400., false);
     }
   }
   mCellAmpSupermodule = histBuilder2D("cellAmplitudeSupermodule", "Cell amplitude vs. supermodule ID ", 4 * static_cast<int>(maxAmp), 0., maxAmp, 20, -0.5, 19.5, false);
@@ -711,6 +741,16 @@ void CellTask::CellHistograms::initForTrigger(const std::string trigger, const T
   mCellOccupancyThr->SetStats(false);
   mCellOccupancyThrBelow = histBuilder2D("cellOccupancyEMCwThrBelow", Form("Cell Occupancy EMCAL,DCAL with E<%.1f GeV/c", mCellThreshold), 96, -0.5, 95.5, 208, -0.5, 207.5, false);
   mCellOccupancyThrBelow->SetStats(false);
+
+  mAverageCellEnergy = histBuilder2D("averageCellEnergy", "Average cell energy", 96, -0.5, 95.5, 208, -0.5, 207.5, true);
+  mAverageCellEnergy->GetXaxis()->SetTitle("col");
+  mAverageCellEnergy->GetYaxis()->SetTitle("row");
+  mAverageCellEnergy->SetStats(false);
+
+  mAverageCellTime = histBuilder2D("averageCellTime", "Average cell time", 96, -0.5, 95.5, 208, -0.5, 207.5, true);
+  mAverageCellTime->GetXaxis()->SetTitle("col");
+  mAverageCellTime->GetYaxis()->SetTitle("row");
+  mAverageCellTime->SetStats(false);
 
   mIntegratedOccupancy = histBuilder2D("cellOccupancyInt", "Cell Occupancy Integrated", 96, -0.5, 95.5, 208, -0.5, 207.5, true);
   mIntegratedOccupancy->GetXaxis()->SetTitle("col");
@@ -730,6 +770,8 @@ void CellTask::CellHistograms::initForTrigger(const std::string trigger, const T
   mCellAmplitudeEMCAL = histBuilder1D("cellAmplitudeEMCAL", "Cell amplitude in EMCAL", 4 * static_cast<int>(maxAmp), 0., maxAmp);
   mCellAmplitudeDCAL = histBuilder1D("cellAmplitudeDCAL", "Cell amplitude in DCAL", 4 * static_cast<int>(maxAmp), 0., maxAmp);
 
+  mCellAmplitudeTime = histBuilder2D("cellAmplitudeTime", "Cell amplitude vs. time; E (GeV); t (ns)", 500, 0., 50., 800, -400., 400., false);
+
   mnumberEvents = histBuilder1D("NumberOfEvents", "Number Of Events", 1, 0.5, 1.5);
   //
   std::fill(mCellTimeBC.begin(), mCellTimeBC.end(), nullptr);
@@ -744,7 +786,7 @@ void CellTask::CellHistograms::initForTrigger(const std::string trigger, const T
   }
 }
 
-void CellTask::CellHistograms::fillHistograms(const o2::emcal::Cell& cell, bool goodCell, double timecalib, int bcphase)
+void CellTask::CellHistograms::fillHistograms(const o2::emcal::Cell& cell, bool goodCell, double timecalib, double energycalib, int bcphase)
 {
   auto fillOptional1D = [](TH1* hist, double x, double weight = 1.) {
     if (hist) {
@@ -757,11 +799,13 @@ void CellTask::CellHistograms::fillHistograms(const o2::emcal::Cell& cell, bool 
     }
   };
 
-  fillOptional2D(mCellAmplitude, cell.getEnergy(), cell.getTower());
+  double energy = cell.getEnergy() * energycalib;
+
+  fillOptional2D(mCellAmplitude, energy, cell.getTower());
   // fillOptional2D(mCellAmplitude[index], cell.getEnergy(), cell.getTower());
 
   if (goodCell) {
-    fillOptional2D(mCellAmplitudeCalib, cell.getEnergy(), cell.getTower());
+    fillOptional2D(mCellAmplitudeCalib, energy, cell.getTower());
     fillOptional2D(mCellTimeCalib, cell.getTimeStamp() - timecalib, cell.getTower());
     // fillOptional2D(mCellAmplitudeCalib[index], cell.getEnergy(), cell.getTower());
     // fillOptional2D(mCellTimeCalib[index], cell.getTimeStamp() - timeoffset, cell.getTower());
@@ -781,11 +825,13 @@ void CellTask::CellHistograms::fillHistograms(const o2::emcal::Cell& cell, bool 
     }
     if (goodCell) {
       fillOptional2D(mCellOccupancyGood, col, row);
+      fillOptional2D(mAverageCellEnergy, col, row, energy);
+      fillOptional2D(mAverageCellTime, col, row, cell.getTimeStamp() - timecalib);
     } else {
       fillOptional2D(mCellOccupancyBad, col, row);
     }
 
-    fillOptional2D(mIntegratedOccupancy, col, row, cell.getEnergy());
+    fillOptional2D(mIntegratedOccupancy, col, row, energy);
 
   } catch (o2::emcal::InvalidCellIDException& e) {
     ILOG(Error, Support) << "Invalid cell ID: " << e.getCellID() << ENDM;
@@ -794,23 +840,25 @@ void CellTask::CellHistograms::fillHistograms(const o2::emcal::Cell& cell, bool 
   try {
     auto cellindices = mGeometry->GetCellIndex(cell.getTower());
     auto supermoduleID = std::get<0>(cellindices);
-    fillOptional2D(mCellAmpSupermodule, cell.getEnergy(), supermoduleID);
+    fillOptional2D(mCellAmpSupermodule, energy, supermoduleID);
+    fillOptional2D(mCellAmplitudeTime, energy, cell.getTimeStamp());
     if (cell.getEnergy() > mAmplitudeThresholdTime) {
       fillOptional2D(mCellTimeSupermodule, cell.getTimeStamp(), supermoduleID);
     }
     if (goodCell) {
-      fillOptional2D(mCellAmpSupermoduleCalib, cell.getEnergy(), supermoduleID);
-      if (cell.getEnergy() > mAmplitudeThresholdTime) {
+      fillOptional2D(mCellAmpSupermoduleCalib, energy, supermoduleID);
+      if (energy > mAmplitudeThresholdTime) {
         fillOptional2D(mCellTimeSupermoduleCalib, cell.getTimeStamp() - timecalib, supermoduleID);
+        fillOptional2D(mCellAmplitudeTimeCalib, energy, cell.getTimeStamp() - timecalib);
       }
     } else {
-      fillOptional2D(mCellAmpSupermoduleBad, cell.getEnergy(), supermoduleID);
+      fillOptional2D(mCellAmpSupermoduleBad, energy, supermoduleID);
     }
-    fillOptional1D(mCellAmplitude_tot, cell.getEnergy());
+    fillOptional1D(mCellAmplitude_tot, energy);
     if (goodCell) {
-      fillOptional1D(mCellAmplitudeCalib_tot, cell.getEnergy()); // EMCAL+DCAL Calib, shifter
+      fillOptional1D(mCellAmplitudeCalib_tot, energy); // EMCAL+DCAL Calib, shifter
     }
-    if (cell.getEnergy() > mAmplitudeThresholdTime) {
+    if (energy > mAmplitudeThresholdTime) {
       fillOptional1D(mCellTimeSupermodule_tot, cell.getTimeStamp()); // EMCAL+DCAL shifter
       if (goodCell) {
         fillOptional1D(mCellTimeSupermoduleCalib_tot, cell.getTimeStamp() - timecalib); // EMCAL+DCAL Calib shifter
@@ -819,23 +867,23 @@ void CellTask::CellHistograms::fillHistograms(const o2::emcal::Cell& cell, bool 
     // check Gain
     int index = cell.getHighGain() ? 0 : 1; //(0=highGain, 1 = lowGain)
     if (supermoduleID < 12) {               // EMCAL
-      if (cell.getEnergy() > mAmplitudeThresholdTime) {
+      if (energy > mAmplitudeThresholdTime) {
         fillOptional1D(mCellTimeSupermoduleEMCAL, cell.getTimeStamp());
         if (goodCell) {
           fillOptional1D(mCellTimeSupermoduleCalib_EMCAL, cell.getTimeStamp() - timecalib);
         }
         fillOptional1D(mCellTimeSupermoduleEMCAL_Gain[index], cell.getTimeStamp());
       }
-      fillOptional1D(mCellAmplitudeEMCAL, cell.getEnergy());
+      fillOptional1D(mCellAmplitudeEMCAL, energy);
       if (goodCell) {
-        fillOptional1D(mCellAmplitudeCalib_EMCAL, cell.getEnergy());
+        fillOptional1D(mCellAmplitudeCalib_EMCAL, energy);
       }
     } else {
-      fillOptional1D(mCellAmplitudeDCAL, cell.getEnergy());
+      fillOptional1D(mCellAmplitudeDCAL, energy);
       if (goodCell) {
-        fillOptional1D(mCellAmplitudeCalib_DCAL, cell.getEnergy());
+        fillOptional1D(mCellAmplitudeCalib_DCAL, energy);
       }
-      if (cell.getEnergy() > mAmplitudeThresholdTime) {
+      if (energy > mAmplitudeThresholdTime) {
         fillOptional1D(mCellTimeSupermoduleDCAL, cell.getTimeStamp());
         if (goodCell) {
           fillOptional1D(mCellTimeSupermoduleCalib_DCAL, cell.getTimeStamp() - timecalib);
@@ -844,7 +892,7 @@ void CellTask::CellHistograms::fillHistograms(const o2::emcal::Cell& cell, bool 
       }
     }
     // bc phase histograms
-    if (cell.getEnergy() > mAmplitudeThresholdTime) {
+    if (energy > mAmplitudeThresholdTime) {
       auto bchistos = mCellTimeBC[bcphase];
       auto histcontainer = bchistos;
       histcontainer->Fill(cell.getTimeStamp());
@@ -882,6 +930,8 @@ void CellTask::CellHistograms::startPublishing(o2::quality_control::core::Object
   publishOptional(mCellTimeSupermoduleCalib_EMCAL);
   publishOptional(mCellTimeSupermoduleCalib_DCAL);
   publishOptional(mCellTimeSupermoduleCalib);
+  publishOptional(mCellAmplitudeTime);
+  publishOptional(mCellAmplitudeTimeCalib);
   publishOptional(mCellAmplitude_tot);
   publishOptional(mCellAmplitudeEMCAL);
   publishOptional(mCellAmplitudeDCAL);
@@ -894,6 +944,8 @@ void CellTask::CellHistograms::startPublishing(o2::quality_control::core::Object
   publishOptional(mCellOccupancyGood);
   publishOptional(mCellOccupancyBad);
   publishOptional(mIntegratedOccupancy);
+  publishOptional(mAverageCellEnergy);
+  publishOptional(mAverageCellTime);
   publishOptional(mnumberEvents);
 
   for (auto histos : mCellTimeSupermoduleEMCAL_Gain) {
@@ -937,12 +989,16 @@ void CellTask::CellHistograms::reset()
   resetOptional(mCellAmplitudeCalib_tot);
   resetOptional(mCellAmplitudeCalib_EMCAL);
   resetOptional(mCellAmplitudeCalib_DCAL);
+  resetOptional(mCellAmplitudeTime);
+  resetOptional(mCellAmplitudeTimeCalib);
   resetOptional(mCellOccupancy);
   resetOptional(mCellOccupancyThr);
   resetOptional(mCellOccupancyThrBelow);
   resetOptional(mCellOccupancyGood);
   resetOptional(mCellOccupancyBad);
   resetOptional(mIntegratedOccupancy);
+  resetOptional(mAverageCellEnergy);
+  resetOptional(mAverageCellTime);
   resetOptional(mnumberEvents);
 
   for (auto histos : mCellTimeSupermoduleEMCAL_Gain) {
@@ -984,12 +1040,16 @@ void CellTask::CellHistograms::clean()
   cleanOptional(mCellAmplitudeCalib_tot);
   cleanOptional(mCellAmplitudeCalib_EMCAL);
   cleanOptional(mCellAmplitudeCalib_DCAL);
+  cleanOptional(mCellAmplitudeTime);
+  cleanOptional(mCellAmplitudeTimeCalib);
   cleanOptional(mCellOccupancy);
   cleanOptional(mCellOccupancyThr);
   cleanOptional(mCellOccupancyThrBelow);
   cleanOptional(mCellOccupancyGood);
   cleanOptional(mCellOccupancyBad);
   cleanOptional(mIntegratedOccupancy);
+  cleanOptional(mAverageCellEnergy);
+  cleanOptional(mAverageCellTime);
   cleanOptional(mnumberEvents);
 
   for (auto histos : mCellTimeSupermoduleEMCAL_Gain) {

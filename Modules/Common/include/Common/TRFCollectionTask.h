@@ -19,11 +19,14 @@
 
 #include "QualityControl/PostProcessingInterface.h"
 #include "Common/TRFCollectionTaskConfig.h"
-#include <DataFormatsQualityControl/TimeRangeFlagCollection.h>
 
 namespace o2::quality_control::repository
 {
 class DatabaseInterface;
+}
+namespace o2::quality_control
+{
+class TimeRangeFlagCollection;
 }
 
 namespace o2::quality_control_modules::common
@@ -39,7 +42,7 @@ class TRFCollectionTask final : public quality_control::postprocessing::PostProc
   /// \brief Destructor
   ~TRFCollectionTask() override;
 
-  void configure(std::string name, const boost::property_tree::ptree& config) override;
+  void configure(const boost::property_tree::ptree& config) override;
   void initialize(quality_control::postprocessing::Trigger, framework::ServiceRegistryRef) override;
   void update(quality_control::postprocessing::Trigger, framework::ServiceRegistryRef) override;
   void finalize(quality_control::postprocessing::Trigger, framework::ServiceRegistryRef) override;

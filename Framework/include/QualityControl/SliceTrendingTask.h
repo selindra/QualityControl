@@ -21,7 +21,6 @@
 
 #include "QualityControl/PostProcessingInterface.h"
 #include "QualityControl/SliceReductor.h"
-#include "QualityControl/SliceInfoTrending.h"
 #include "QualityControl/SliceTrendingTaskConfig.h"
 
 #include <memory>
@@ -29,8 +28,10 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
-#include <TCanvas.h>
 #include <TTree.h>
+
+class TCanvas;
+class TObject;
 
 namespace o2::quality_control::repository
 {
@@ -57,7 +58,7 @@ class SliceTrendingTask : public PostProcessingInterface
   ~SliceTrendingTask() final = default;
 
   /// \brief Post-processing methods inherited from 'PostProcessingInterface'.
-  void configure(std::string name, const boost::property_tree::ptree& config) final;
+  void configure(const boost::property_tree::ptree& config) final;
   void initialize(Trigger, framework::ServiceRegistryRef) final;
   void update(Trigger, framework::ServiceRegistryRef) final;
   void finalize(Trigger, framework::ServiceRegistryRef) final;

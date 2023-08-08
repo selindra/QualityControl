@@ -21,6 +21,7 @@
 #include <unordered_map>
 #include <vector>
 #include <string>
+#include <TPaveText.h>
 class TCanvas;
 
 namespace o2::quality_control::repository
@@ -47,7 +48,7 @@ class QualityObserver : public PostProcessingInterface
   ~QualityObserver() final = default;
 
   /// \brief Post-processing methods inherited from 'PostProcessingInterface'.
-  void configure(std::string name, const boost::property_tree::ptree& config) final;
+  void configure(const boost::property_tree::ptree& config) final;
   void initialize(Trigger, framework::ServiceRegistryRef) final;
   void update(Trigger, framework::ServiceRegistryRef) final;
   void finalize(Trigger, framework::ServiceRegistryRef) final;
@@ -64,16 +65,23 @@ class QualityObserver : public PostProcessingInterface
   void getQualities(const Trigger& t, o2::quality_control::repository::DatabaseInterface&);
   /// \brief Method to create and publish the overview panel
   void generatePanel();
+  /// \brief Method to add text to the TPaveText
+  void generateText(TPaveText* pt, bool isReason, std::string QOMetaText);
+  /// \brief Method to break Text into smaller pieces
+  void breakText(TPaveText* pt, std::string infoType, std::string textUnbroken);
 
   std::vector<Config> mConfig;
   std::string mObserverName;
   std::unordered_map<std::string, std::vector<std::string>> mQualities;
   std::unordered_map<std::string, int> mColors;
   TCanvas* mCanvas = nullptr;
+  size_t mLineLength = 70;
 
   bool mViewDetails;
   std::unordered_map<std::string, std::vector<std::string>> mReasons;
   std::unordered_map<std::string, std::vector<std::string>> mComments;
+  std::string mQualityDetailChoice;
+  std::unordered_map<std::string, bool> mQualityDetails;
 };
 
 } // namespace o2::quality_control_modules::tpc

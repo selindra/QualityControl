@@ -65,7 +65,7 @@
         "plots": [
           {
             "names": ["NClusters_mean", "NClusters_stddev"],
-            "title": ["Average NClusters Cycle", "Stddev NClusters Cycle"],
+            "title": ["Average NClusters per Cycle", "Stddev NClusters per Cycle"],
             "varexp": ["NClusters.mean:ntreeentries", "NClusters.stddev:ntreeentries"],
             "selection": "",
             "option": "PL"

@@ -23,13 +23,13 @@
 #include <cfloat>
 
 #include "QualityControl/QcInfoLogger.h"
+#include "DetectorsRaw/RawHeaderStream.h"
 #include "DetectorsRaw/RDHUtils.h"
 #include "EMCAL/RawTask.h"
 #include "Headers/RAWDataHeader.h"
 #include "EMCALBase/Geometry.h"
 #include "EMCALReconstruction/AltroDecoder.h"
 #include "EMCALReconstruction/RawReaderMemory.h"
-#include "EMCALReconstruction/RawHeaderStream.h"
 #include <Framework/ConcreteDataMatcher.h>
 #include <Framework/InputRecordWalker.h>
 #include <Framework/InputRecord.h>
@@ -380,7 +380,7 @@ void RawTask::initialize(o2::framework::InitContext& /*ctx*/)
   } // loop trigger case
 }
 
-void RawTask::startOfActivity(Activity& /*activity*/)
+void RawTask::startOfActivity(const Activity& /*activity*/)
 {
   ILOG(Debug, Devel) << "startOfActivity" << ENDM;
   reset();
@@ -730,7 +730,7 @@ void RawTask::endOfCycle()
   ILOG(Debug, Support) << "endOfCycle" << ENDM;
 }
 
-void RawTask::endOfActivity(Activity& /*activity*/)
+void RawTask::endOfActivity(const Activity& /*activity*/)
 {
   ILOG(Debug, Devel) << "endOfActivity" << ENDM;
   ILOG(Info, Support) << "Total amount of messages: " << mNumberOfMessages << ENDM;

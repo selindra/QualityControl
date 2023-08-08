@@ -13,6 +13,7 @@
 
 #include "MUONCommon/Helpers.h"
 #include "QualityControl/ObjectsManager.h"
+#include "QualityControl/QcInfoLogger.h"
 #include <Framework/DataRefUtils.h>
 #include <Framework/InputRecord.h>
 #include <gsl/span>
@@ -93,7 +94,7 @@ void TracksTask::initialize(o2::framework::InitContext& /*ic*/)
   createPlotter(GID::Source::MFTMCHMID, "MFT-MCH-MID/");
 }
 
-void TracksTask::startOfActivity(Activity& activity)
+void TracksTask::startOfActivity(const Activity& activity)
 {
   ILOG(Debug, Devel) << "startOfActivity : " << activity << ENDM;
 }
@@ -189,7 +190,7 @@ void TracksTask::endOfCycle()
   ILOG(Debug, Devel) << "endOfCycle" << ENDM;
 }
 
-void TracksTask::endOfActivity(Activity& /*activity*/)
+void TracksTask::endOfActivity(const Activity& /*activity*/)
 {
   ILOG(Debug, Devel) << "endOfActivity" << ENDM;
 }

@@ -23,6 +23,7 @@
 #include <Framework/Task.h>
 #include <Framework/DataProcessorSpec.h>
 #include <Framework/CompletionPolicy.h>
+#include <Framework/DataTakingContext.h>
 #include <Headers/DataHeader.h>
 // QC
 #include "QualityControl/TaskRunnerConfig.h"
@@ -48,6 +49,7 @@ class ProcessingContext;
 namespace o2::quality_control::core
 {
 
+class Timekeeper;
 class TaskInterface;
 class ObjectsManager;
 
@@ -137,13 +139,15 @@ class TaskRunner : public framework::Task
   std::shared_ptr<monitoring::Monitoring> mCollector;
   std::shared_ptr<TaskInterface> mTask;
   std::shared_ptr<ObjectsManager> mObjectsManager;
-  int mRunNumber;
+  std::shared_ptr<Timekeeper> mTimekeeper;
+  Activity mActivity;
 
   void updateMonitoringStats(framework::ProcessingContext& pCtx);
 
   bool mCycleOn = false;
   bool mNoMoreCycles = false;
   int mCycleNumber = 0;
+  framework::DeploymentMode mDeploymentMode = framework::DeploymentMode::Local;
 
   // stats
   int mNumberMessagesReceivedInCycle = 0;

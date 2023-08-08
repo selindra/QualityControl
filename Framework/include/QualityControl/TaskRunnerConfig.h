@@ -24,6 +24,7 @@
 #include <Framework/DataProcessorSpec.h>
 #include "QualityControl/Activity.h"
 #include "QualityControl/DiscardFileParameters.h"
+#include "QualityControl/CustomParameters.h"
 
 namespace o2::base
 {
@@ -44,15 +45,16 @@ struct TaskRunnerConfig {
   std::string taskName;
   std::string moduleName;
   std::string className;
-  int cycleDurationSeconds;
+  std::vector<std::pair<size_t, size_t>> cycleDurations = {};
   int maxNumberCycles;
   std::string consulUrl{};
   std::string conditionUrl{};
   std::string monitoringUrl{};
+  std::string bookkeepingUrl{};
   framework::Inputs inputSpecs{};
   framework::OutputSpec moSpec{ "XXX", "INVALID" };
   framework::Options options{};
-  std::unordered_map<std::string, std::string> customParameters = {};
+  CustomParameters customParameters;
   std::string detectorName = "MISC"; // intended to be the 3 letters code
   int parallelTaskID = 0;            // ID to differentiate parallel local Tasks from one another. 0 means this is the only one.
   std::string saveToFile{};
